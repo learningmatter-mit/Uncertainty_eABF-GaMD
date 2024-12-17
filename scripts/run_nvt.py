@@ -8,7 +8,7 @@ from typing import Union
 from ase import Atoms, units
 from nff.md.nvt import Langevin
 from nff.io.ase import NeuralFF, AtomsBatch
-from evi.data import Dataset
+from nff.data import Dataset
 
 import sys
 

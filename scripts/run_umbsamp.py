@@ -9,7 +9,7 @@ from ase import Atoms
 from nff.md.nvt import Langevin
 from nff.md.utils import BiasedNeuralMDLogger
 from nff.io.ase import AtomsBatch
-from evi.data import Dataset
+from nff.data import Dataset
 from ase.io import read
 
 import sys

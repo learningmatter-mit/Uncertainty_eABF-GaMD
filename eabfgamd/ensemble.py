@@ -116,7 +116,6 @@ def get_ensemble_path(path: str) -> str:
 
 
 def make_ensemble(model_paths: list) -> Ensemble:
-    from evi.models import SchNet, PaiNN
     from mace.modules.models import MACE
 
     if len(model_paths) == 1:

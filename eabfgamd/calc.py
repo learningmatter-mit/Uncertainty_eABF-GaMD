@@ -11,7 +11,7 @@ import torch
 from ase import Atom, Atoms
 from ase.io import read
 from ase.io.lammpsdata import read_lammps_data, write_lammps_data
-from evi.data import Dataset
+from nff.data import Dataset
 from tqdm import tqdm
 
 from .ala import Paths as AlaPaths
