@@ -5,7 +5,7 @@ Code for performing uncertainty-driven enhanced sampling using the extended syst
 ### Code structure
 
 The folders contain:
-* [eabfgamd](): Classes, methods, and utility functions to implement the uncertainty-driven eABF-GaMD method using the MACE architecture.
+* [eabfgamd](https://github.com/atan14/Uncertainty_eABF-GaMD/tree/main/eabfgamd): Classes, methods, and utility functions to implement the uncertainty-driven eABF-GaMD method using the MACE architecture.
   * `ala.py`: Provides classes and functions for alanine dipeptide simulations, including topology and energy scaling.
   * `calc.py`: Contains calculators for OpenMM and LAMMPS to perform molecular dynamics simulations and energy calculations.
   * `colvars.py`: Defines collective variables for enhanced sampling, including uncertainty and dihedral angles.
@@ -25,10 +25,10 @@ The folders contain:
   * `train.py`: Provides functions to configure and manage training of neural network models.
   * `umbrella_sampling.py`: Implements umbrella sampling techniques using MACE calculators for enhanced sampling. This is used to generate PMFs for alanine dipeptide.
   * `uncertainty.py`: Defines classes for different uncertainty estimation methods in molecular simulations.
-* [scripts](): Wrapper around the classes and methods from `eabfgamd` to run uncertainty-driven eABF-GaMD.
+* [scripts](https://github.com/atan14/Uncertainty_eABF-GaMD/tree/main/scripts): Wrapper around the classes and methods from `eabfgamd` to run uncertainty-driven eABF-GaMD.
   * `run_ala_pipeline.py`: Manages the execution of the alanine dipeptide simulation pipeline, including job submission and configuration handling.
   * `run_silica_pipeline.py`: Manages the execution of the silica simulation pipeline, handling job submission, configuration, and enhanced sampling.
-* [configs](): Contains example configuration files with parameters for running simulations and experiments.
+* [configs](https://github.com/atan14/Uncertainty_eABF-GaMD/tree/main/configs): Contains example configuration files with parameters for running simulations and experiments.
 
 ### Code dependency
 
