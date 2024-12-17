@@ -1,0 +1,144 @@
+dset:
+  batch_size: 64
+  calib_path: /home/user/projects/uncertainty_eABF-GaMD/ala/data/amber/calib_num100.xyz
+  path: /home/user/projects/uncertainty_eABF-GaMD/ala/data/amber/train_num100.xyz
+  random_state:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  test_path: /home/user/projects/uncertainty_eABF-GaMD/ala/data/amber/test_num9800.xyz
+  use_different_split: true
+  val_size: 0.05
+enhsamp:
+  amd_method: gamd_upper
+  amd_parameter: 0.01
+  apply_amd: true
+  bin_width: 0.1
+  collect_pot_samples: true
+  conf_k: 100.0
+  conf_margin: 0.1
+  cosdist_threshold: 0.015
+  cv_max: 30.0
+  cv_min: -30.0
+  dt: 0.25
+  estimate_k: true
+  ext_mass: 50.0
+  ext_sigma: 0.5
+  factor:
+    ext_sigma: 0.9
+    nsteps: 1.2
+    sampling_llim: 1.05
+  friction_per_ps: 1.0
+  gamma: 1.0
+  hill_drop_freq: 100
+  hill_height: 0.01
+  hill_std: 0.025
+  linkage_method: complete
+  loginterval: 2
+  method: amdeabf
+  nfull: 100.0
+  nsteps: 50000
+  num_simulations: 2
+  relax_algs: fire
+  relax_nsteps: 10
+  samd_c0: 0.0001
+  sampled_path: /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_ensemble/1ece69ea/gen0/sampled.pth.tar
+  sampling_llim: 0.25
+  sampling_method: latent_embedding
+  start_geom_idx:
+  - 4208228
+  - 8806316
+  temperature:
+  - 300.0
+  - 500.0
+  time_width: 0.01
+  traj_dir: /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_ensemble/1ece69ea/gen0/amdeabf
+  uncertainty_key: CV
+  unphysical_emax: 200.0
+  unphysical_emin: 0.0
+  unphysical_rmax: 2.0
+  unphysical_rmin: 0.75
+  well_tempered_temp: 4000.0
+gen: 0
+id: 1ece69ea
+loss:
+  energy_coef: 1.0
+  energy_loss: mae
+  forces_coef: 100.0
+  forces_loss: mae
+  type: weighted
+model:
+  MLP_irreps: 16x0e
+  avg_num_neighbors: 1
+  compute_avg_num_neighbors: 'True'
+  compute_forces: 'True'
+  correlation:
+  - 3
+  - 2
+  - 2
+  - 3
+  - 2
+  cutoff: 5.0
+  default_dtype: float32
+  gate: silu
+  hidden_irreps:
+  - 4x0e+4x1o
+  - 4x0e+4x1o
+  - 5x0e+5x1o
+  - 4x0e+4x1o
+  - 5x0e+5x1o
+  interaction: RealAgnosticInteractionBlock
+  interaction_first: RealAgnosticInteractionBlock
+  max_ell: 3
+  model_type: mace
+  num_interactions:
+  - 2
+  - 3
+  - 2
+  - 3
+  - 2
+  num_networks: 5
+  num_radial_basis: 8
+  outdir:
+  - /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_ensemble/1ece69ea/gen0/model/00
+  - /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_ensemble/1ece69ea/gen0/model/01
+  - /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_ensemble/1ece69ea/gen0/model/02
+  - /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_ensemble/1ece69ea/gen0/model/03
+  - /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_ensemble/1ece69ea/gen0/model/04
+  radial_MLP: '[64, 64, 64]'
+  radial_type: bessel
+  scaling: rms_forces_scaling
+openmm:
+  cutoff: 1.0
+  forcefield: amber
+  inpcrd: /home/user/projects/uncertainty_eABF-GaMD/ala/data/amber/ala_amber.rst7
+  pdb: ala.pdb
+  prmtop: /home/user/projects/uncertainty_eABF-GaMD/ala/data/amber/ala_amber.parm7
+  timestep: 2.0e-06
+train:
+  amsgrad: true
+  checkpoint_interval: 2
+  clip_grad: 10.0
+  device: cuda
+  ema: true
+  every_n_epochs: 20
+  keep_checkpoints: false
+  lr: 0.01
+  lr_factor: 0.8
+  min_lr: 1.0e-07
+  n_epochs: 1500
+  optimizer: adam
+  patience: 30
+  restart_latest: true
+  save_cpu: false
+  scheduler: ReduceLROnPlateau
+  start_swa: 800
+  swa: true
+uncertainty:
+  calibrate: false
+  order: system_mean
+  quantity: energy_grad
+  std_or_var: std
+  type: ensemble

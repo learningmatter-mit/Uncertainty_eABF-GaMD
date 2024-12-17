@@ -1,0 +1,233 @@
+dset:
+  batch_size: 8
+  calib_frac: 0.15
+  calib_path: /home/user/projects/uncertainty_eABF-GaMD/silica/data/lammps/n600_quench_and_equil_calib_num44.xyz
+  path: /home/user/projects/uncertainty_eABF-GaMD/silica/data/lammps/n600_quench_and_equil_train_num176.xyz
+  random_state:
+  - 0
+  test_path: /home/user/projects/uncertainty_eABF-GaMD/silica/data/lammps/crystalline_num100.xyz
+  use_different_split: true
+  val_size: 0.05
+enhsamp:
+  amd_method: gamd_upper
+  amd_parameter: 0.01
+  apply_amd: true
+  barostat_mask:
+  - 1
+  - 1
+  - 1
+  bin_width: 0.1
+  collect_pot_samples: true
+  compressibility: 4.57e-05
+  conf_k: 100.0
+  conf_margin: 0.1
+  cosdist_threshold: 0.015
+  cv_max: 30.0
+  cv_min: -30.0
+  dt: 1.0
+  estimate_k: true
+  ext_mass: 500.0
+  ext_sigma: 0.5
+  factor:
+    ext_mass: 1.0
+    ext_sigma: 0.9
+    nsteps: 1.2
+    sampling_llim: 0.9
+    time_width: 2.5
+  fixcm: false
+  friction_per_ps: 1.0
+  linkage_method: complete
+  loginterval: 20
+  md_ensemble: nvt
+  method: amdeabf
+  nbr_update_period: 20
+  nfull: 20.0
+  nsteps: 100000
+  num_simulations: 6
+  pressure:
+  - 1.01325
+  - 1.01325
+  - 1.01325
+  - 1.01325
+  - 1.01325
+  - 1.01325
+  relax_algs: fire
+  relax_nsteps: 20
+  samd_c0: 0.0001
+  sampled_path: /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/sampled.pth.tar
+  sampling_llim: 0.75
+  sampling_llim_quantile: 0.75
+  sampling_method: latent_embedding
+  scaling_array:
+  - 0.9723903240818589
+  - 0.9880559654475669
+  - 0.997062125359444
+  - 0.9761618237122962
+  - 0.9772827401294062
+  - 1.018421396348671
+  start_geom_dset: /home/user/projects/uncertainty_eABF-GaMD/silica/data/lammps/n600_quench_and_equil_train_num176.xyz
+  start_geom_idx:
+  - 1763320
+  - 3785499
+  - 3413922
+  - 9792452
+  - 6297141
+  - 9327956
+  taup: 1000.0
+  taut: 100.0
+  temperature:
+  - 300.0
+  - 500.0
+  - 750.0
+  - 1000.0
+  - 1500.0
+  - 2000.0
+  traj_dir:
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/amdeabf/nvt/300K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/amdeabf/nvt/500K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/amdeabf/nvt/750K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/amdeabf/nvt/1000K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/amdeabf/nvt/1500K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/amdeabf/nvt/2000K
+  T_init: 300.0
+  uncertainty_key: CV
+  unphysical_emax: 0.0
+  unphysical_emin: -10000.0
+  unphysical_rmin: 1.3
+gen: 0
+id: 9be5cfee
+loss:
+  energy_coef: 1.0
+  energy_loss: mae
+  forces_coef: 100.0
+  forces_loss: mae
+  type: weighted
+model:
+  compute_avg_num_neighbors: 'True'
+  compute_forces: 'True'
+  cutoff: 5.0
+  default_dtype: float32
+  directed: false
+  dropout_rate: 0.0
+  model_type: mace_mp
+  num_networks: 1
+  num_readout_layer: '{''energy'': 1}'
+  outdir:
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/model
+  radial_type: bessel
+  scaling: rms_forces_scaling
+  trainable_gauss: false
+system: silica
+train:
+  amsgrad: true
+  checkpoint_interval: 2
+  clip_grad: 10.0
+  device: cuda
+  ema: true
+  every_n_epochs: 20
+  keep_checkpoints: false
+  lr: 0.01
+  lr_factor: 0.8
+  min_lr: 1.0e-07
+  n_epochs: 1500
+  optimizer: adam
+  patience: 30
+  restart_latest: true
+  save_cpu: false
+  scheduler: ReduceLROnPlateau
+  start_swa: 800
+  swa: false
+uncertainty:
+  calibrate: true
+  cp_alpha: 0.05
+  gmm_n_clusters:
+    8: 10
+    14: 10
+  gmm_path: /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/model/gmm.model
+  gmm_test_embed_key: embedding
+  gmm_train_embed_key: train_embedding
+  order: local_mean_system_max
+  quantity: energy_grad
+  set_min_uncertainty_at_level: local
+  type: gmm
+md:
+  dt: 
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+  equilibration_nsteps: 20000
+  friction_per_ps: 1.0
+  loginterval: 10
+  md_ensemble: nvt
+  nbr_update_period: 20
+  nfull: 20.0
+  num_simulations: 20
+  production_nsteps: 400000
+  scaling_array:
+  - 0.9723903240818589
+  - 0.9880559654475669
+  - 0.997062125359444
+  - 0.9761618237122962
+  - 0.9772827401294062
+  - 1.018421396348671
+  start_geom: /home/user/projects/uncertainty_eABF-GaMD/silica/data/lammps/density_temperature/init_struc.xyz
+  T_init: 300.0
+  temperature:
+  - 300.0
+  - 400.0
+  - 600.0
+  - 800.0
+  - 1000.0
+  - 1200.0
+  - 1400.0
+  - 1600.0
+  - 1800.0
+  - 2000.0
+  - 2200.0
+  - 2400.0
+  - 2600.0
+  - 2800.0
+  - 3000.0
+  - 3200.0
+  - 3400.0
+  - 3600.0
+  - 3800.0
+  - 4000.0
+  traj_dir:
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/300K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/400K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/600K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/800K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/1000K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/1200K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/1400K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/1600K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/1800K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/2000K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/2200K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/2400K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/2600K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/2800K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/3000K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/3200K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/3400K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/3600K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/3800K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/4000K

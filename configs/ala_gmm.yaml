@@ -1,0 +1,127 @@
+dset:
+  batch_size: 64
+  calib_path: /home/user/projects/uncertainty_eABF-GaMD/ala/data/amber/calib_num100.xyz
+  path: /home/user/projects/uncertainty_eABF-GaMD/ala/data/amber/train_num100.xyz
+  random_state:
+  - 0
+  test_path: /home/user/projects/uncertainty_eABF-GaMD/ala/data/amber/test_num9800.xyz
+  use_different_split: true
+  val_size: 0.05
+enhsamp:
+  amd_method: gamd_upper
+  amd_parameter: 0.01
+  apply_amd: true
+  bin_width: 0.1
+  collect_pot_samples: true
+  conf_k: 100.0
+  conf_margin: 0.1
+  cosdist_threshold: 0.015
+  cv_max: 30.0
+  cv_min: -30.0
+  dt: 0.25
+  estimate_k: true
+  ext_mass: 50.0
+  ext_sigma: 0.5
+  factor:
+    ext_sigma: 0.9
+    nsteps: 1.2
+    sampling_llim: 1.05
+  friction_per_ps: 1.0
+  gamma: 1.0
+  hill_drop_freq: 100
+  hill_height: 0.01
+  hill_std: 0.025
+  linkage_method: complete
+  loginterval: 2
+  method: amdeabf
+  nfull: 100.0
+  nsteps: 50000
+  num_simulations: 2
+  relax_algs: fire
+  relax_nsteps: 10
+  samd_c0: 0.0001
+  sampled_path: /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_gmm/c41eb276/gen0/sampled.pth.tar
+  sampling_llim: 2.0
+  sampling_method: latent_embedding
+  start_geom_idx:
+  - 95547
+  - 40025
+  temperature:
+  - 300.0
+  - 500.0
+  time_width: 0.01
+  traj_dir: /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_gmm/c41eb276/gen0/amdeabf
+  uncertainty_key: CV
+  unphysical_emax: 200.0
+  unphysical_emin: 0.0
+  unphysical_rmax: 2.0
+  unphysical_rmin: 0.75
+  well_tempered_temp: 4000.0
+gen: 0
+id: c41eb276
+loss:
+  energy_coef: 1.0
+  energy_loss: mae
+  forces_coef: 100.0
+  forces_loss: mae
+  type: weighted
+model:
+  MLP_irreps: 16x0e
+  avg_num_neighbors: 1
+  compute_avg_num_neighbors: 'True'
+  compute_forces: 'True'
+  correlation:
+  - 3
+  cutoff: 5.0
+  default_dtype: float32
+  gate: silu
+  hidden_irreps:
+  - 4x0e+4x1o
+  interaction: RealAgnosticInteractionBlock
+  interaction_first: RealAgnosticInteractionBlock
+  max_ell: 3
+  model_type: mace
+  num_interactions:
+  - 2
+  num_networks: 1
+  num_radial_basis: 8
+  outdir:
+  - /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_gmm/c41eb276/gen0/model
+  radial_MLP: '[64, 64, 64]'
+  radial_type: bessel
+  scaling: rms_forces_scaling
+openmm:
+  cutoff: 1.0
+  forcefield: amber
+  inpcrd: /home/user/projects/uncertainty_eABF-GaMD/ala/data/amber/ala_amber.rst7
+  pdb: ala.pdb
+  prmtop: /home/user/projects/uncertainty_eABF-GaMD/ala/data/amber/ala_amber.parm7
+  timestep: 2.0e-06
+train:
+  amsgrad: true
+  checkpoint_interval: 2
+  clip_grad: 10.0
+  device: cuda
+  ema: true
+  every_n_epochs: 20
+  keep_checkpoints: false
+  lr: 0.01
+  lr_factor: 0.8
+  min_lr: 1.0e-07
+  n_epochs: 1500
+  optimizer: adam
+  patience: 30
+  restart_latest: true
+  save_cpu: false
+  scheduler: ReduceLROnPlateau
+  start_swa: 800
+  swa: true
+uncertainty:
+  calibrate: true
+  cp_alpha: 0.05
+  gmm_n_clusters: 15
+  gmm_test_embed_key: embedding
+  gmm_train_embed_key: train_embedding
+  order: system_mean
+  quantity: energy_grad
+  type: gmm
