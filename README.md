@@ -30,6 +30,16 @@ The folders contain:
   * `run_silica_pipeline.py`: Manages the execution of the silica simulation pipeline, handling job submission, configuration, and enhanced sampling.
 * [configs](): Contains example configuration files with parameters for running simulations and experiments.
 
+### Code dependency
+
+Packages needed for the code:
+* MACE: https://github.com/ACEsuit/mace
+* NeuralForceField: https://github.com/learningmatter-mit/NeuralForceField
+* Atomic Simulation Environment: https://gitlab.com/ase/ase
+* Scikit-learn
+* Scikit-matter
+* Amptorch: https://github.com/ulissigroup/amptorch
+
 ### Data
 
 The data used for the paper is deposited at the Zenodo archive: [link]().
