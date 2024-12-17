@@ -24,4 +24,6 @@ The folders contain:
   * `umbrella_sampling.py`: Implements umbrella sampling techniques using MACE calculators for enhanced sampling.
   * `uncertainty.py`: Defines classes for different uncertainty estimation methods in molecular simulations.
 * [scripts](): Wrapper around the classes and methods to run uncertainty-driven eABF-GaMD.
+  * `run_ala_pipeline.py`: Manages the execution of the alanine dipeptide simulation pipeline, including job submission and configuration handling.
+  * `run_silica_pipeline.py`: Orchestrates the silica simulation pipeline, handling job submission, configuration, and enhanced sampling.
 * [configs](): Contains configuration files with parameters for running simulations and experiments.
