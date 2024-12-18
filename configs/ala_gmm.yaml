@@ -22,12 +22,11 @@ enhsamp:
   estimate_k: true
   ext_mass: 50.0
   ext_sigma: 0.5
-  factor:
+  factors:
     ext_sigma: 0.9
     nsteps: 1.2
     sampling_llim: 1.05
   friction_per_ps: 1.0
-  gamma: 1.0
   hill_drop_freq: 100
   hill_height: 0.01
   hill_std: 0.025
@@ -40,7 +39,7 @@ enhsamp:
   relax_algs: fire
   relax_nsteps: 10
   samd_c0: 0.0001
-  sampled_path: /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_gmm/c41eb276/gen0/sampled.pth.tar
+  sampled_path: /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_gmm/uuid/gen0/sampled.pth.tar
   sampling_llim: 2.0
   sampling_method: latent_embedding
   start_geom_idx:
@@ -50,7 +49,7 @@ enhsamp:
   - 300.0
   - 500.0
   time_width: 0.01
-  traj_dir: /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_gmm/c41eb276/gen0/amdeabf
+  traj_dir: /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_gmm/uuid/gen0/amdeabf
   uncertainty_key: CV
   unphysical_emax: 200.0
   unphysical_emin: 0.0
@@ -58,7 +57,7 @@ enhsamp:
   unphysical_rmin: 0.75
   well_tempered_temp: 4000.0
 gen: 0
-id: c41eb276
+id: uuid
 loss:
   energy_coef: 1.0
   energy_loss: mae
@@ -86,7 +85,7 @@ model:
   num_networks: 1
   num_radial_basis: 8
   outdir:
-  - /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_gmm/c41eb276/gen0/model
+  - /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_gmm/uuid/gen0/model
   radial_MLP: '[64, 64, 64]'
   radial_type: bessel
   scaling: rms_forces_scaling

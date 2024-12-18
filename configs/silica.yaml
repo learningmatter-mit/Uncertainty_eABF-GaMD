@@ -54,7 +54,7 @@ enhsamp:
   relax_algs: fire
   relax_nsteps: 20
   samd_c0: 0.0001
-  sampled_path: /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/sampled.pth.tar
+  sampled_path: /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/sampled.pth.tar
   sampling_llim: 0.75
   sampling_llim_quantile: 0.75
   sampling_method: latent_embedding
@@ -83,19 +83,19 @@ enhsamp:
   - 1500.0
   - 2000.0
   traj_dir:
-  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/amdeabf/nvt/300K
-  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/amdeabf/nvt/500K
-  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/amdeabf/nvt/750K
-  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/amdeabf/nvt/1000K
-  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/amdeabf/nvt/1500K
-  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/amdeabf/nvt/2000K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/amdeabf/nvt/300K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/amdeabf/nvt/500K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/amdeabf/nvt/750K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/amdeabf/nvt/1000K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/amdeabf/nvt/1500K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/amdeabf/nvt/2000K
   T_init: 300.0
   uncertainty_key: CV
   unphysical_emax: 0.0
   unphysical_emin: -10000.0
   unphysical_rmin: 1.3
 gen: 0
-id: 9be5cfee
+id: uuid
 loss:
   energy_coef: 1.0
   energy_loss: mae
@@ -113,7 +113,7 @@ model:
   num_networks: 1
   num_readout_layer: '{''energy'': 1}'
   outdir:
-  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/model
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/model
   radial_type: bessel
   scaling: rms_forces_scaling
   trainable_gauss: false
@@ -143,7 +143,7 @@ uncertainty:
   gmm_n_clusters:
     8: 10
     14: 10
-  gmm_path: /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/model/gmm.model
+  gmm_path: /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/model/gmm.model
   gmm_test_embed_key: embedding
   gmm_train_embed_key: train_embedding
   order: local_mean_system_max
@@ -211,23 +211,23 @@ md:
   - 3800.0
   - 4000.0
   traj_dir:
-  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/300K
-  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/400K
-  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/600K
-  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/800K
-  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/1000K
-  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/1200K
-  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/1400K
-  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/1600K
-  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/1800K
-  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/2000K
-  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/2200K
-  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/2400K
-  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/2600K
-  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/2800K
-  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/3000K
-  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/3200K
-  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/3400K
-  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/3600K
-  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/3800K
-  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/9be5cfee/gen0/md/nvt/4000K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/md/nvt/300K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/md/nvt/400K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/md/nvt/600K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/md/nvt/800K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/md/nvt/1000K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/md/nvt/1200K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/md/nvt/1400K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/md/nvt/1600K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/md/nvt/1800K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/md/nvt/2000K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/md/nvt/2200K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/md/nvt/2400K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/md/nvt/2600K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/md/nvt/2800K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/md/nvt/3000K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/md/nvt/3200K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/md/nvt/3400K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/md/nvt/3600K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/md/nvt/3800K
+  - /home/user/projects/uncertainty_eABF-GaMD/silica/results/mace_mp_gmm/uuid/gen0/md/nvt/4000K

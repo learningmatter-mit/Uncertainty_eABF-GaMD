@@ -44,7 +44,7 @@ enhsamp:
   relax_algs: fire
   relax_nsteps: 10
   samd_c0: 0.0001
-  sampled_path: /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_ensemble/1ece69ea/gen0/sampled.pth.tar
+  sampled_path: /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_ensemble/uuid/gen0/sampled.pth.tar
   sampling_llim: 0.25
   sampling_method: latent_embedding
   start_geom_idx:
@@ -54,7 +54,7 @@ enhsamp:
   - 300.0
   - 500.0
   time_width: 0.01
-  traj_dir: /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_ensemble/1ece69ea/gen0/amdeabf
+  traj_dir: /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_ensemble/uuid/gen0/amdeabf
   uncertainty_key: CV
   unphysical_emax: 200.0
   unphysical_emin: 0.0
@@ -62,7 +62,7 @@ enhsamp:
   unphysical_rmin: 0.75
   well_tempered_temp: 4000.0
 gen: 0
-id: 1ece69ea
+id: uuid
 loss:
   energy_coef: 1.0
   energy_loss: mae
@@ -102,11 +102,11 @@ model:
   num_networks: 5
   num_radial_basis: 8
   outdir:
-  - /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_ensemble/1ece69ea/gen0/model/00
-  - /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_ensemble/1ece69ea/gen0/model/01
-  - /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_ensemble/1ece69ea/gen0/model/02
-  - /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_ensemble/1ece69ea/gen0/model/03
-  - /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_ensemble/1ece69ea/gen0/model/04
+  - /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_ensemble/uuid/gen0/model/00
+  - /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_ensemble/uuid/gen0/model/01
+  - /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_ensemble/uuid/gen0/model/02
+  - /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_ensemble/uuid/gen0/model/03
+  - /home/user/projects/uncertainty_eABF-GaMD/ala/results/mace_ensemble/uuid/gen0/model/04
   radial_MLP: '[64, 64, 64]'
   radial_type: bessel
   scaling: rms_forces_scaling
