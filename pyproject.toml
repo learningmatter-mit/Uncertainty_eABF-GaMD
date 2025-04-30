@@ -132,6 +132,7 @@ ignore = [
     "S310",    # url open functions can be unsafe
     "TRY003",  # long exception messages not defined in the exception class itself
     "UP015",   # unnecessary "r" in open call
+    "UP007",   # use X | Y instead of Union[X, Y]
     "Q000",    # single quotes
     "D103",    # missing docstring in public function
     "D",       # do not fight with doc for now, todo in the future
