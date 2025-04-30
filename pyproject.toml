@@ -134,8 +134,6 @@ ignore = [
     "UP015",   # unnecessary "r" in open call
     "UP007",   # use X | Y instead of Union[X, Y]
     "Q000",    # single quotes
-    "D103",    # missing docstring in public function
-    "D",       # do not fight with doc for now, todo in the future
     "UP035",   # deprecated Dict and List, but keep to support python<3.10
     "UP006",   # deprecated Dict and List, but keep to support python<3.10
     "ICN001",  # import name convention
