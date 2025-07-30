@@ -1,3 +1,9 @@
+"""This module contains functions for running enhanced sampling
+dynamics using the eABF and aMD-eABF methods. It includes functions for
+setting up the simulation, running the dynamics, and handling
+multiple simulations in parallel.
+"""
+
 import gc
 import os
 import time
@@ -8,13 +14,22 @@ import numpy as np
 import torch
 import torch.multiprocessing as mp
 from ase import Atoms, units
-
+from ase.io import read
 from nff.data import Dataset
 from nff.io.ase import AtomsBatch
 from nff.md.utils import BiasedNeuralMDLogger
 
 from .ala import TopoInfo
 from .ensemble import get_ensemble_path
+from .mace_calculators import (
+    AttractiveBias,
+    MACECalculator,
+    MACEMPCalculator,
+    WTMeABF,
+    aMDeABF,
+    eABF,
+)
+from .mdlogger import MDLogger
 from .misc import (
     get_least_used_device,
     get_logger,
@@ -23,24 +38,23 @@ from .misc import (
     make_and_backup_dir,
     save_config,
 )
-from .mdlogger import MDLogger
 from .npt import BerendsenNPT
 from .nvt import Langevin
 
 __all__ = [
-    "relax_atoms",
+    "get_CV_parameters",
+    "get_starting_atom",
+    "get_uncertainty_params",
+    "handle_multiproc_enhsamp",
     "make_config_for_each_simulation",
     "make_config_for_each_unbiased_simulation",
-    "get_starting_atom",
-    "get_CV_parameters",
-    "get_uncertainty_params",
-    "set_up_unbiased_calculator",
+    "relax_atoms",
+    "run",
+    "run_dynamics",
+    "run_unbiased_dynamics",
     "set_up_biased_calculator",
     "set_up_dynamics",
-    "run_dynamics",
-    "run",
-    "run_unbiased_dynamics",
-    "handle_multiproc_enhsamp",
+    "set_up_unbiased_calculator",
 ]
 
 
@@ -48,18 +62,36 @@ logger = get_logger("BiasedMD")
 
 
 def check_completion(config: dict) -> bool:
+    """Check if the simulation has already been completed
+
+    Args:
+        config (dict): configuration dictionary
+
+    Returns:
+        bool: True if the simulation has been completed, False otherwise
+    """
     if not os.path.exists(f"{config['enhsamp']['traj_dir']}/status.log"):
         return False
-    else:
-        with open(f"{config['enhsamp']['traj_dir']}/status.log", "r") as f:
-            lines = f.read()
-            if "BiasedMD: Done" in lines:
-                return True
-            else:
-                return False
+    with open(f"{config['enhsamp']['traj_dir']}/status.log", "r") as f:
+        lines = f.read()
+        return "BiasedMD: Done" in lines
 
 
 def make_config_for_each_simulation(config: dict) -> List[dict]:
+    """Create a configuration parameter file for each simulation when running
+    multiple simulations in parallel for a given statistical ensemble or
+    generation. Only the temperature, pressure, and trajectory directory are
+    changed for each simulation.
+
+    Args:
+        config (dict): base configuration dictionary
+
+    Raises:
+        ValueError: raised if the statistical ensemble is not recognized
+
+    Returns:
+        List[dict]: list of configuration dictionaries for each simulation
+    """
     md_ensemble = config["enhsamp"].get("md_ensemble", "nvt")
 
     num_simulations = config["enhsamp"]["num_simulations"]
@@ -92,9 +124,7 @@ def make_config_for_each_simulation(config: dict) -> List[dict]:
             )
         elif md_ensemble == "npt":
             params["enhsamp"]["pressure"] = pressures[i]
-            params["enhsamp"]["barostat_mask"] = config["enhsamp"].get(
-                "barostat_mask", [1, 1, 1]
-            )
+            params["enhsamp"]["barostat_mask"] = config["enhsamp"].get("barostat_mask", [1, 1, 1])
         else:
             raise ValueError(f"Unknown statistical ensemble: {md_ensemble}")
 
@@ -107,7 +137,7 @@ def make_config_for_each_simulation(config: dict) -> List[dict]:
                 "barostat_mask",
             ]:
                 continue  # already set above
-            elif isinstance(val, list):
+            elif isinstance(val, list):  # noqa: RET507
                 params["enhsamp"][key] = val[i]
             else:
                 params["enhsamp"][key] = val
@@ -121,7 +151,14 @@ def make_config_for_each_simulation(config: dict) -> List[dict]:
 
 
 def get_uncertainty_params(config: dict) -> dict:
-    # set up uncertainty parameters for CV
+    """Set up uncertainty parameters for CV
+
+    Args:
+        config (dict): configuration dictionary
+
+    Returns:
+        dict: uncertainty parameters
+    """
     if config["uncertainty"]["type"] == "ensemble":
         uncertainty_params = {
             "quantity": config["uncertainty"]["quantity"],
@@ -158,9 +195,7 @@ def get_uncertainty_params(config: dict) -> dict:
             "gmm_path": config["uncertainty"].get("gmm_path", None),
         }
     else:
-        raise ValueError(
-            f"Uncertainty type {config['uncertainty']['type']} not recognized"
-        )
+        raise ValueError(f"Uncertainty type {config['uncertainty']['type']} not recognized")
 
     return uncertainty_params
 
@@ -174,12 +209,20 @@ def get_starting_atom(
     cutoff: float = 5.0,
     cutoff_skin: float = 0.0,
 ) -> Tuple[AtomsBatch, int]:
-    #     # get starting geometry
-    #     if random_idx is None:
-    #         random_idx = np.random.choice(len(dset))
-    #     else:
-    #         random_idx = random_idx % len(dset)
+    """Get starting atoms from dataset
 
+    Args:
+        dset (Dataset): dataset to get starting atoms from
+        random_idx (int, optional): index of the starting atoms. Defaults to None.
+        directed (bool, optional): whether to use directed graph. Defaults to True.
+        device (str, optional): device to use. Defaults to "cuda".
+        scaling_array (List[float], optional): scaling array for cell. Defaults to None.
+        cutoff (float, optional): cutoff for neighbor list. Defaults to 5.0.
+        cutoff_skin (float, optional): cutoff skin for neighbor list. Defaults to 0.0.
+
+    Returns:
+        Tuple[AtomsBatch, int]: starting atoms and index of the starting atoms
+    """
     energies = np.array([atoms.info["energy"] for atoms in dset])
     random_idx = np.argmin(energies)
 
@@ -217,7 +260,14 @@ def relax_atoms(
     nsteps: int = 100,
     fmax: float = 0.05,
 ) -> None:
-    # relax the starting atoms
+    """Relax the starting atoms using the specified algorithm
+
+    Args:
+        starting_atoms (AtomsBatch): starting atoms to relax
+        algs (str, optional): algorithm to use for relaxation. Defaults to "fire".
+        nsteps (int, optional): number of steps to run. Defaults to 100.
+        fmax (float, optional): maximum force for relaxation. Defaults to 0.05.
+    """
     if algs == "fire":
         from ase.optimize.fire import FIRE
 
@@ -248,6 +298,14 @@ def relax_atoms(
 
 
 def get_CV_parameters(config: dict) -> dict:
+    """Get CV parameters for enhanced sampling
+
+    Args:
+        config (dict): configuration dictionary
+
+    Returns:
+        dict: CV parameters
+    """
     params = config["enhsamp"]
 
     uncertainty_params = get_uncertainty_params(config)
@@ -315,11 +373,15 @@ def get_CV_parameters(config: dict) -> dict:
 
 def set_up_unbiased_calculator(
     config: dict,
-    model=None,
-):
-    if config["model"]["model_type"] == "mace":
-        from .mace_calculators import MACECalculator
+    model_size: Union[str, None] = "small",
+) -> MACECalculator:
+    """Set up unbiased calculator for enhanced sampling
 
+    Args:
+        config (dict): configuration dictionary
+        model_size (str, optional): model to use if using the MACE. Defaults to "small".
+    """
+    if config["model"]["model_type"] == "mace":
         logger("Setting up unbiased MACE calculator")
         unbiased_calculator = MACECalculator(
             model_path=get_ensemble_path(config["model"]["outdir"]),
@@ -331,11 +393,9 @@ def set_up_unbiased_calculator(
             model_type="MACE",
         )
     elif config["model"]["model_type"] == "mace_mp":
-        from .mace_calculators import MACEMPCalculator
-
         logger("Setting up unbiased MACE-MP calculator")
         unbiased_calculator = MACEMPCalculator(
-            model="small",
+            model=model_size,
             dispersion=False,
             default_dtype="float32",
             device=config["train"]["device"],
@@ -350,14 +410,28 @@ def set_up_biased_calculator(
     train_dset: Union[Dataset, List[Atoms], None],
     calib_dset: Union[Dataset, List[Atoms], None],
     cv_params: Union[dict, None] = None,
-    model=None,
-):
+    model: Union[str, None] = None,
+) -> Union[None, MACECalculator]:
+    """Set up biased calculator for enhanced sampling
+
+    Args:
+        config (dict): configuration dictionary with input parameters for the simulation
+        starting_atoms (AtomsBatch): starting atoms to relax
+        train_dset (Dataset, optional): training dataset. Defaults to None.
+        calib_dset (Dataset, optional): calibration dataset. Defaults to None.
+        cv_params (dict, optional): CV parameters. Defaults to None.
+        model (str, optional): model to use if using the MACE. Defaults to None.
+
+    Raises:
+        ValueError: raised if the enhanced sampling method is not recognized
+
+    Returns:
+        Union[None, MACECalculator]: biased calculator
+    """
     cv_params["definition"]["train_dset"] = train_dset
     cv_params["definition"]["calib_dset"] = calib_dset
 
     if config["enhsamp"]["method"] == "eabf":
-        from .mace_calculators import eABF
-
         logger("Setting up eABF calculator")
         calculator = eABF(
             model_path=cv_params["definition"]["model_path"],
@@ -371,8 +445,6 @@ def set_up_biased_calculator(
             device=config["train"]["device"],
         )
     elif config["enhsamp"]["method"] == "wtmeabf":
-        from .mace_calculators import WTMeABF
-
         logger("Setting up WTMeABF calculator")
         calculator = WTMeABF(
             model_path=cv_params["definition"]["model_path"],
@@ -389,8 +461,6 @@ def set_up_biased_calculator(
             well_tempered_temp=config["enhsamp"]["well_tempered_temp"],
         )
     elif config["enhsamp"]["method"] == "amdeabf":
-        from .mace_calculators import aMDeABF
-
         logger("Setting up aMD-eABF calculator")
         calculator = aMDeABF(
             model_path=cv_params["definition"]["model_path"],
@@ -410,8 +480,6 @@ def set_up_biased_calculator(
             device=config["train"]["device"],
         )
     elif config["enhsamp"]["method"] == "attractivebias":
-        from .mace_calculators import AttractiveBias
-
         logger("Setting up AttractiveBias calculator")
         calculator = AttractiveBias(
             model_path=cv_params["definition"]["model_path"],
@@ -422,8 +490,6 @@ def set_up_biased_calculator(
             starting_atoms=starting_atoms,
         )
     elif config["enhsamp"]["method"] == "unbiased":
-        from .mace_calculators import MACECalculator
-
         logger("Setting up unbiased MACE calculator")
         calculator = MACECalculator(
             model_path=get_ensemble_path(config["model"]["outdir"]),
@@ -436,8 +502,6 @@ def set_up_biased_calculator(
             cv_defs=[cv_params],
         )
     elif config["enhsamp"]["method"] == "unbiased_mp":
-        from .mace_calculators import MACEMPCalculator
-
         logger("Setting up unbiased MACE-MP calculator")
         calculator = MACEMPCalculator(
             model="small",
@@ -447,16 +511,21 @@ def set_up_biased_calculator(
             # cv_defs=[cv_params],
         )
     else:
-        raise ValueError(
-            f"Unknown enhanced sampling method: {config['enhsamp']['method']}"
-        )
+        raise ValueError(f"Unknown enhanced sampling method: {config['enhsamp']['method']}")
 
     return calculator
 
 
 def set_up_dynamics(
     config: dict, starting_atoms: AtomsBatch, nbr_list: Union[None, np.ndarray]
-):
+) -> None:
+    """Set up dynamics for enhanced sampling
+
+    Args:
+        config (dict): configuration dictionary with input parameters for the simulation
+        starting_atoms (AtomsBatch): starting atoms from which to run the dynamics
+        nbr_list (np.ndarray, optional): neighbor list. Defaults to None.
+    """
     params = config["enhsamp"]
 
     md_ensemble = params.get("md_ensemble", "nvt")
@@ -529,6 +598,15 @@ def set_up_dynamics(
 
 
 def run_dynamics(config: dict, force_restart: bool = False) -> None:
+    """Run the dynamics for the given configuration
+
+    Args:
+        config (dict): configuration dictionary with input parameters for the simulation
+        force_restart (bool, optional): whether to force restart the simulation. Defaults to False.
+
+    Raises:
+        ValueError: raised if the dataset type is not recognized
+    """
     if force_restart is False:
         completed = check_completion(config)
         if completed is True:
@@ -558,9 +636,7 @@ def run_dynamics(config: dict, force_restart: bool = False) -> None:
         if config["dset"]["calib_path"].endswith(".xyz"):
             calib_dset = load_from_xyz(config["dset"]["calib_path"])
         elif config["dset"]["calib_path"].endswith(".pth.tar"):
-            calib_dset = Dataset.from_file(
-                config["dset"]["calib_path"].replace(".xyz", ".pth.tar")
-            )
+            calib_dset = Dataset.from_file(config["dset"]["calib_path"].replace(".xyz", ".pth.tar"))
         else:
             raise ValueError(f"Dataset type not recognized: {config['dset']['path']}")
 
@@ -631,9 +707,7 @@ def run_dynamics(config: dict, force_restart: bool = False) -> None:
         else:
             apply_amd_after_steps = config["enhsamp"].get("apply_amd_after_steps", 10)
             if apply_amd_after_steps > config["enhsamp"]["nsteps"]:
-                raise ValueError(
-                    "apply_amd_after_steps should be less than nsteps in config"
-                )
+                raise ValueError("apply_amd_after_steps should be less than nsteps in config")
             dyn.run(
                 steps=apply_amd_after_steps
             )  # run for 10 steps without AMD to avoid zero division error
@@ -652,7 +726,16 @@ def run_dynamics(config: dict, force_restart: bool = False) -> None:
         file.close()
 
 
-def run(config: dict, force_restart: bool = False):
+def run(config: dict, force_restart: bool = False) -> None:
+    """Run the dynamics for the given configuration
+
+    Args:
+        config (dict): configuration dictionary with input parameters for the simulation
+        force_restart (bool, optional): whether to force restart the simulation. Defaults to False.
+
+    Raises:
+        RuntimeError: raised if there is a CUDA out of memory error
+    """
     try:
         run_dynamics(config=config, force_restart=force_restart)
     except RuntimeError as e:
@@ -668,6 +751,20 @@ def run(config: dict, force_restart: bool = False):
 
 
 def make_config_for_each_unbiased_simulation(config: dict) -> List[dict]:
+    """Create a configuration parameter file for each simulation when running
+    multiple simulations in parallel for a given statistical ensemble or
+    generation. Only the temperature, pressure, and trajectory directory are
+    changed for each simulation.
+
+    Args:
+        config (dict): base configuration dictionary
+
+    Raises:
+        ValueError: raised if the statistical ensemble is not recognized
+
+    Returns:
+        List[dict]: list of configuration dictionaries for each simulation
+    """
     md_ensemble = config["md"].get("md_ensemble", "nvt")
 
     num_simulations = config["md"]["num_simulations"]
@@ -695,9 +792,7 @@ def make_config_for_each_unbiased_simulation(config: dict) -> List[dict]:
         params["md"]["temperature"] = temperatures[i]
 
         if md_ensemble == "nvt":
-            params["md"]["scaling_array"] = config["md"].get(
-                "scaling_array", [1, 1, 1, 1, 1, 1]
-            )
+            params["md"]["scaling_array"] = config["md"].get("scaling_array", [1, 1, 1, 1, 1, 1])
         elif md_ensemble == "npt":
             params["md"]["pressure"] = pressures[i]
             params["md"]["barostat_mask"] = config["md"].get("barostat_mask", [1, 1, 1])
@@ -713,7 +808,7 @@ def make_config_for_each_unbiased_simulation(config: dict) -> List[dict]:
                 "barostat_mask",
             ]:
                 continue  # already set above
-            elif isinstance(val, list):
+            elif isinstance(val, list):  # noqa: RET507
                 params["md"][key] = val[i]
             else:
                 params["md"][key] = val
@@ -724,8 +819,12 @@ def make_config_for_each_unbiased_simulation(config: dict) -> List[dict]:
 
 
 def run_unbiased_dynamics(config: dict, force_restart: bool = False) -> None:
-    from ase.io import read
+    """Run the unbiased dynamics for the given configuration
 
+    Args:
+        config (dict): configuration dictionary with input parameters for the simulation
+        force_restart (bool, optional): whether to force restart the simulation. Defaults to False.
+    """
     params = config["md"]
 
     if force_restart is False:
@@ -836,9 +935,14 @@ def run_unbiased_dynamics(config: dict, force_restart: bool = False) -> None:
         file.close()
 
 
-def handle_multiproc_enhsamp(
-    config: dict, cpu_count: int = 3, force_restart: bool = False
-) -> None:
+def handle_multiproc_enhsamp(config: dict, cpu_count: int = 3, force_restart: bool = False) -> None:
+    """Handle multiprocessing for enhanced sampling
+
+    Args:
+        config (dict): configuration dictionary with input parameters for the simulation
+        cpu_count (int, optional): number of CPU cores to use. Defaults to 3.
+        force_restart (bool, optional): whether to force restart the simulation. Defaults to False.
+    """
     mp.set_sharing_strategy("file_system")
     mp.set_start_method("spawn")
 

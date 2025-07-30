@@ -1,26 +1,31 @@
+"""Module for uncertainty estimation in machine learning models.
+This module provides classes and functions for estimating uncertainty in
+machine learning models, including conformal prediction, ensemble uncertainty,
+evidential uncertainty, and Gaussian Mixture Model (GMM) uncertainty.
+"""
+
+from __future__ import annotations
+
 import os
 import warnings
-from typing import List, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-
 from sklearn.mixture import GaussianMixture
-from amptorch.uncertainty import ConformalPrediction
 
 __all__ = [
-    "Uncertainty",
+    "ConformalPrediction",
     "EnsembleUncertainty",
     "EvidentialUncertainty",
-    "MVEUncertainty",
     "GMMUncertainty",
-    "ConformalPrediction",
+    "MVEUncertainty",
+    "Uncertainty",
 ]
 
 
 class Uncertainty:
-    """
-    Base class for uncertainty estimation.
+    """Base class for uncertainty estimation.
 
     Args:
         order (str): Order of the uncertainty estimation (atomic, local, system).
@@ -32,25 +37,37 @@ class Uncertainty:
             * system_sum: Sum of uncertainties of all atoms in the system (n_systems,)
             * system_max: Maximum of uncertainties of all atoms in the system (n_systems,)
             * system_min: Minimum of uncertainties of all atoms in the system (n_systems,)
-            * system_mean_squared: Mean squared of uncertainties of all atoms in the system (n_systems,)
-            * system_root_mean_squared: Root mean squared of uncertainties of all atoms in the system (n_systems,)
+            * system_mean_squared: Mean squared of uncertainties of all atoms in the system
+                (n_systems,)
+            * system_root_mean_squared: Root mean squared of uncertainties of all atoms in
+                the system (n_systems,)
             Hybrid choices include:
-            * atomic_system_sum: Sum of atomic uncertainties in the system (n_systems,). Equivalent to system_sum
-            * atomic_system_mean: Mean of atomic uncertainties in the system (n_systems,). Equivalent to system_mean
-            * atomic_system_max: Maximum of atomic uncertainties in the system (n_systems,). Equivalent to system_max
-            * atomic_system_min: Minimum of atomic uncertainties in the system (n_systems,). Equivalent to system_min
-            * atomic_system_mean_squared: Mean squared of atomic uncertainties in the system (n_systems,). Equivalent to system_mean_squared
-            * atomic_system_root_mean_squared: Root mean squared of atomic uncertainties in the system (n_systems,). Equivalent to system_root_mean_squared
-            * local_mean_system_sum: Sum of mean uncertainties of the neighbors of each atom in the system (n_systems,).
-            * local_mean_system_mean: Mean of mean uncertainties of the neighbors of each atom in the system (n_systems,). Equivalent to just doing system_mean.
-            * local_sum_system_sum: Sum of sum uncertainties of the neighbors of each atom in the system (n_systems,). Equivalent to just doing system_sum.
-            * local_sum_system_mean: Mean of sum uncertainties of the neighbors of each atom in the system (n_systems,).
+            * atomic_system_sum: Sum of atomic uncertainties in the system (n_systems,).
+                Equivalent to system_sum
+            * atomic_system_mean: Mean of atomic uncertainties in the system (n_systems,).
+                Equivalent to system_mean
+            * atomic_system_max: Maximum of atomic uncertainties in the system (n_systems,).
+                Equivalent to system_max
+            * atomic_system_min: Minimum of atomic uncertainties in the system (n_systems,).
+                Equivalent to system_min
+            * atomic_system_mean_squared: Mean squared of atomic uncertainties in the system
+                (n_systems,). Equivalent to system_mean_squared
+            * atomic_system_root_mean_squared: Root mean squared of atomic uncertainties in
+                the system (n_systems,). Equivalent to system_root_mean_squared
+            * local_mean_system_sum: Sum of mean uncertainties of the neighbors of each atom
+                in the system (n_systems,).
+            * local_mean_system_mean: Mean of mean uncertainties of the neighbors of each atom
+                in the system (n_systems,). Equivalent to just doing system_mean.
+            * local_sum_system_sum: Sum of sum uncertainties of the neighbors of each atom in
+                the system (n_systems,). Equivalent to just doing system_sum.
+            * local_sum_system_mean: Mean of sum uncertainties of the neighbors of each atom
+                in the system (n_systems,).
         calibrate (bool): Calibrate the uncertainty using Conformal Prediction
         cp_alpha (float): Significance level for the Conformal Prediction model
         min_uncertainty (float): Minimum uncertainty value
     """
 
-    def __init__(
+    def __init__(  # noqa: D107
         self,
         order: str,
         calibrate: bool,
@@ -74,13 +91,11 @@ class Uncertainty:
 
             self.CP = ConformalPrediction(alpha=cp_alpha)
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args, **kwargs):  # noqa: D102
         return self.get_uncertainty(*args, **kwargs)
 
     def _check_and_set_order(self, order: str) -> None:
-        """
-        Check if the order is valid.
-        """
+        """Check if the order is valid."""
         assert order in [
             "atomic",
             "atomic_system_sum",
@@ -106,13 +121,13 @@ class Uncertainty:
         ], f"{order} not implemented"
 
         if "atomic" in order and "system" in order:
-            print(f"{order} is equivalent to {order[order.find('system'):]}")
+            print(f"{order} is equivalent to {order[order.find('system') :]}")
 
         if "local_sum" in order and "system_sum" in order:
-            print(f"{order} is equivalent to {order[order.find('system'):]}")
+            print(f"{order} is equivalent to {order[order.find('system') :]}")
 
         if "local_mean" in order and "system_mean" in order:
-            print(f"{order} is equivalent to {order[order.find('system'):]}")
+            print(f"{order} is equivalent to {order[order.find('system') :]}")
 
         self.order = order
 
@@ -122,8 +137,8 @@ class Uncertainty:
         key: Union[str, int, None] = None,
         force: bool = False,
     ) -> None:
-        """
-        Update the minimum uncertainty value to be used for scaling the uncertainty.
+        """Update the minimum uncertainty value to be used for scaling the uncertainty.
+
         Args:
             min_uncertainty (float): Minimum uncertainty value
             key (str, int, None): Key for the minimum uncertainty value if a
@@ -133,7 +148,6 @@ class Uncertainty:
                 applications.
             force (bool): Forcefully overwrite the minimum uncertainty value
         """
-
         if getattr(self, "umin", None) is None:
             if key is not None:
                 self.umin = {key: min_uncertainty}
@@ -143,26 +157,28 @@ class Uncertainty:
 
         if isinstance(self.umin, dict):
             if key is None:
-                raise ValueError(
-                    "Key must be provided when using dictionary for umin.")
+                raise ValueError("Key must be provided when using dictionary for umin.")
             if key in self.umin and force is False:
                 return
             if key in self.umin and force is True:
                 warnings.warn(
-                    f"Uncertainty: min_uncertainty for {key} already set to {self.umin[key]}. Overwriting to {min_uncertainty}"
+                    f"Uncertainty: min_uncertainty for {key} already set to {self.umin[key]}."
+                    f" Overwriting to {min_uncertainty}",
+                    stacklevel=2,
                 )
 
             self.umin[key] = min_uncertainty
 
         else:
             if key is not None:
-                raise ValueError(
-                    "Key must be None when not using dictionary for umin.")
+                raise ValueError("Key must be None when not using dictionary for umin.")
             if force is False:
                 return
             if force is True:
                 warnings.warn(
-                    f"Uncertainty: min_uncertainty already set to {self.umin}. Overwriting to {min_uncertainty}"
+                    f"Uncertainty: min_uncertainty already set to {self.umin}."
+                    f" Overwriting to {min_uncertainty}",
+                    stacklevel=2,
                 )
 
             self.umin = min_uncertainty
@@ -170,10 +186,13 @@ class Uncertainty:
     def set_min_uncertainty(
         self, uncertainty: Union[np.ndarray, torch.Tensor], force: bool = False
     ) -> None:
-        """
-        Set the minimum uncertainty value.
-        """
+        """Set the minimum uncertainty value.
 
+        Args:
+            uncertainty (np.ndarray | torch.Tensor): Uncertainty values to be used
+                for setting the minimum uncertainty value.
+            force (bool): Forcefully overwrite the minimum uncertainty value
+        """
         # if uncertainty is per atom and the element indices are given
         if hasattr(self, "element_indices") is True:
             uncertainty = uncertainty.flatten()
@@ -189,10 +208,15 @@ class Uncertainty:
     def normalize_to_min_uncertainty(
         self, uncertainty: Union[np.ndarray, torch.Tensor]
     ) -> Union[np.ndarray, torch.Tensor]:
-        """
-        Scale the uncertainty to the minimum value.
-        """
+        """Scale the uncertainty to the minimum value.
 
+        Args:
+            uncertainty (np.ndarray | torch.Tensor): Uncertainty values to be scaled
+                to the minimum uncertainty value.
+
+        Returns:
+            np.ndarray | torch.Tensor: Scaled uncertainty values.
+        """
         # if the minimum uncertainty has not been defined yet, then just return the uncertainty
         if hasattr(self, "umin") is False:
             return uncertainty
@@ -206,8 +230,7 @@ class Uncertainty:
 
         # if the minimum uncertainty is type/key/condition-dependent
         elif isinstance(self.umin, dict):
-            assert hasattr(
-                self, "element_indices") is True, "Element indices not saved"
+            assert hasattr(self, "element_indices") is True, "Element indices not saved"
 
             num_system, num_atoms = uncertainty.shape
             uncertainty = uncertainty.flatten()
@@ -231,11 +254,17 @@ class Uncertainty:
         key: Union[str, int],
         indices: Union[torch.Tensor, np.ndarray],
     ) -> None:
-        """
-        Save the indices of atoms so that the uncertainty can be scaled to the
+        """Save the indices of atoms so that the uncertainty can be scaled to the
         type/key/condition-dependent minimum uncertainty. Only needed if there
         is need to scale the uncertainty to a minimum value that is dependent
         on the atomic number, species, etc.
+
+        Args:
+            key (str | int): Key for the minimum uncertainty value if a
+                dictionary is used for storing the minimum uncertainty values
+                for different applications (e.g. atomic numbers, species, etc.).
+            indices (torch.Tensor | np.ndarray): Indices of the atoms in the
+                system that are of the same type/key/condition.
         """
         if not hasattr(self, "element_indices"):
             self.element_indices = {}
@@ -248,17 +277,13 @@ class Uncertainty:
         residuals_calib: Union[np.ndarray, torch.Tensor],
         heuristic_uncertainty_calib: Union[np.ndarray, torch.Tensor],
     ) -> None:
-        """
-        Fit the Conformal Prediction model to the calibration data.
-        """
+        """Fit the Conformal Prediction model to the calibration data."""
         self.CP.fit(residuals_calib, heuristic_uncertainty_calib)
 
     def calibrate_uncertainty(
         self, uncertainty: Union[np.ndarray, torch.Tensor], *args, **kwargs
     ) -> Union[np.ndarray, torch.Tensor]:
-        """
-        Calibrate the uncertainty using Conformal Prediction.
-        """
+        """Calibrate the uncertainty using Conformal Prediction."""
         if hasattr(self.CP, "qhat") is False:
             raise Exception("Uncertainty: ConformalPrediction not fitted.")
 
@@ -272,9 +297,7 @@ class Uncertainty:
         *args,
         **kwargs,
     ) -> Union[np.ndarray, torch.Tensor]:
-        """
-        Get the uncertainty for each atom.
-        """
+        """Get the uncertainty for each atom."""
         return NotImplementedError
 
     def get_local_uncertainty(
@@ -283,8 +306,7 @@ class Uncertainty:
         num_atoms: List[int],
         nbr_list: List[torch.Tensor],
     ) -> torch.Tensor:
-        """
-        Get the uncertainty for local environment within a certain cutoff
+        """Get the uncertainty for local environment within a certain cutoff
         sphere of atoms.
         """
         assert "local" in self.order, f"{self.order} does not contain 'local'"
@@ -296,24 +318,26 @@ class Uncertainty:
         size = nbr_list.max().item() + 1
 
         # assert that the shape of atomic_uncertainty is (num_systems, num_atoms)
-        assert (
-            len(atomic_uncertainty) == len(num_atoms)
-        ), f"Number of systems do not match. Lengths of atomic_uncertainty and num_atoms are {len(atomic_uncertainty)} and {len(num_atoms)}, respectively."
-
-        atoms_match = np.array(
-            [len(u) == n for u, n in zip(atomic_uncertainty, num_atoms)]
+        assert len(atomic_uncertainty) == len(num_atoms), (
+            "Number of systems do not match. Lengths of atomic_uncertainty and num_atoms"
+            f" are {len(atomic_uncertainty)} and {len(num_atoms)}, respectively."
         )
+
+        atoms_match = np.array([len(u) == n for u, n in zip(atomic_uncertainty, num_atoms)])
         if not all(atoms_match):
             not_match = np.where(~atoms_match)[0]
             raise AssertionError(
-                f"Number of atoms in systems {not_match} do not match. Expected numbers of atoms in atomic_uncertainty are {[num_atoms[i] for i in not_match]} but got {atomic_uncertainty[not_match]}."
+                f"Number of atoms in systems {not_match} do not match. Expected numbers of"
+                f" atoms in atomic_uncertainty are {[num_atoms[i] for i in not_match]} but"
+                f" got {atomic_uncertainty[not_match]}."
             )
 
         # assert that the atomic uncertainty has the same number of atoms as the neighbor list
         atomic_uncertainty = atomic_uncertainty.flatten()
-        assert (
-            len(atomic_uncertainty) == size
-        ), f"Size of atomic uncertainty does not match. Expected size is {size} but got {len(atomic_uncertainty)}."
+        assert len(atomic_uncertainty) == size, (
+            f"Size of atomic uncertainty does not match. Expected size is {size}"
+            f" but got {len(atomic_uncertainty)}."
+        )
 
         nbr_count = torch.zeros(size, dtype=dtype, device=self.device)
         nbr_count.scatter_add_(
@@ -328,12 +352,8 @@ class Uncertainty:
         )
 
         uncertainty_sum = torch.zeros(size, dtype=dtype, device=self.device)
-        uncertainty_sum.scatter_add_(
-            0, nbr_list[:, 0], atomic_uncertainty[nbr_list[:, 1]]
-        )
-        uncertainty_sum.scatter_add_(
-            0, nbr_list[:, 1], atomic_uncertainty[nbr_list[:, 0]]
-        )
+        uncertainty_sum.scatter_add_(0, nbr_list[:, 0], atomic_uncertainty[nbr_list[:, 1]])
+        uncertainty_sum.scatter_add_(0, nbr_list[:, 1], atomic_uncertainty[nbr_list[:, 0]])
 
         # Get the local uncertainty based on the order
         if self.order.startswith("local_mean"):
@@ -352,22 +372,30 @@ class Uncertainty:
     def get_system_uncertainty(
         self, uncertainty: torch.Tensor, num_atoms: List[int]
     ) -> torch.Tensor:
-        """
-        Get the uncertainty for the entire system.
+        """Get the uncertainty for the entire system.
+
+        Args:
+            uncertainty (torch.Tensor): Uncertainty values for each atom in the system.
+            num_atoms (List[int]): List of number of atoms in each system.
+
+        Returns:
+            torch.Tensor: Uncertainty values for the entire system.
         """
         assert "system" in self.order, f"{self.order} does not contain 'system'"
 
         # assert that the shape of atomic_uncertainty is (num_systems, num_atoms)
-        assert (
-            len(uncertainty) == len(num_atoms)
-        ), f"Number of systems do not match. Lengths of uncertainty and num_atoms are {len(uncertainty)} and {len(num_atoms)}, respectively."
+        assert len(uncertainty) == len(num_atoms), (
+            f"Number of systems do not match. Lengths of uncertainty and num_atoms"
+            f" are {len(uncertainty)} and {len(num_atoms)}, respectively."
+        )
 
-        atoms_match = np.array(
-            [len(u) == n for u, n in zip(uncertainty, num_atoms)])
+        atoms_match = np.array([len(u) == n for u, n in zip(uncertainty, num_atoms)])
         if not all(atoms_match):
             not_match = np.where(~atoms_match)[0]
             raise AssertionError(
-                f"Number of atoms in systems {not_match} do not match. Expected numbers of atoms in uncertainty are {[num_atoms[i] for i in not_match]} but got {uncertainty[not_match]}."
+                f"Number of atoms in systems {not_match} do not match. Expected numbers"
+                f" of atoms in uncertainty are {[num_atoms[i] for i in not_match]} but"
+                f" got {uncertainty[not_match]}."
             )
 
         # get the desired system uncertainty based on the order
@@ -386,31 +414,36 @@ class Uncertainty:
 
         return system_uncertainty
 
-    def get_uncertainty(
-        self, results: dict, reset_min_uncertainty: bool = False, *args, **kwargs
-    ):
+    def get_uncertainty(self, results: dict, reset_min_uncertainty: bool = False, *args, **kwargs):
+        """Get the uncertainty from the results.
+
+        Args:
+            results (dict): Dictionary containing the results from the model.
+            reset_min_uncertainty (bool): Reset the minimum uncertainty value
+                to the current uncertainty value.
+            args: Additional arguments.
+            kwargs: Additional keyword arguments.
+
+        Returns:
+            torch.Tensor: Uncertainty values for the model.
         """
-        Get the uncertainty from the results.
-        """
-        uncertainty = self.get_atomic_uncertainty(
-            results=results, *args, **kwargs)
+        uncertainty = self.get_atomic_uncertainty(results=results, *args, **kwargs)  # noqa: B026
         num_atoms = results["num_atoms"]
 
         # Get the uncertainty based on the order
-        # If the order is "atomic", then the uncertainty is calculated for each atom, no action needed here
+        # If the order is "atomic", then the uncertainty is calculated for
+        # each atom, no action needed here
         if "atomic" in self.order:
             pass
 
-            if self.set_min_uncertainty_at_level == "atomic":
-                self.set_min_uncertainty(
-                    uncertainty, force=reset_min_uncertainty)
-                uncertainty = self.normalize_to_min_uncertainty(uncertainty)
+            # if self.set_min_uncertainty_at_level == "atomic":
+            #     self.set_min_uncertainty(uncertainty, force=reset_min_uncertainty)
+            #     uncertainty = self.normalize_to_min_uncertainty(uncertainty)
 
-        # If the order contains "local", then the uncertainty is calculated for the local environment
+        # If the order contains "local", then the uncertainty is calculated for
+        # the local environment
         if "local" in self.order:
-            assert (
-                self.nbr_key in results
-            ), "Neighbor list must be provided for local uncertainty"
+            assert self.nbr_key in results, "Neighbor list must be provided for local uncertainty"
 
             uncertainty = self.get_local_uncertainty(
                 atomic_uncertainty=uncertainty,
@@ -419,8 +452,7 @@ class Uncertainty:
             )
 
             if self.set_min_uncertainty_at_level == "local":
-                self.set_min_uncertainty(
-                    uncertainty, force=reset_min_uncertainty)
+                self.set_min_uncertainty(uncertainty, force=reset_min_uncertainty)
                 uncertainty = self.normalize_to_min_uncertainty(uncertainty)
 
         # If the order contains "system", then the uncertainty is calculated for the entire system
@@ -430,8 +462,7 @@ class Uncertainty:
             ).squeeze()
 
             if self.set_min_uncertainty_at_level == "system":
-                self.set_min_uncertainty(
-                    uncertainty, force=reset_min_uncertainty)
+                self.set_min_uncertainty(uncertainty, force=reset_min_uncertainty)
                 uncertainty = self.normalize_to_min_uncertainty(uncertainty)
 
         # Calibrate the uncertainty using Conformal Prediction if calibrate is True
@@ -441,13 +472,58 @@ class Uncertainty:
         return uncertainty
 
 
-class EnsembleUncertainty(Uncertainty):
+class ConformalPrediction:
+    """Pulled from https://github.com/ulissigroup/amptorch
+    Performs quantile regression on score functions to obtain the estimated qhat
+        on calibration data and apply to test data during prediction.
     """
-    Ensemble uncertainty estimation using the variance or standard deviation of the
+
+    def __init__(self, alpha: float):  # noqa: D107
+        self.alpha = alpha
+
+    def fit(
+        self,
+        residuals_calib: np.ndarray | torch.Tensor,
+        heuristic_uncertainty_calib: np.ndarray | torch.Tensor,
+    ) -> None:
+        """Fit the Conformal Prediction model to the calibration data.
+
+        Args:
+            residuals_calib (np.ndarray | torch.Tensor): Residuals of the calibration data.
+            heuristic_uncertainty_calib (np.ndarray | torch.Tensor): Heuristic uncertainty of
+                the calibration data.
+        """
+        # score function
+        scores = abs(residuals_calib / heuristic_uncertainty_calib)
+        scores = np.array(scores)
+
+        n = len(residuals_calib)
+        qhat = torch.quantile(torch.from_numpy(scores), np.ceil((n + 1) * (1 - self.alpha)) / n)
+        qhat_value = np.float64(qhat.numpy()).item()
+        self.qhat = qhat_value
+
+    def predict(
+        self, heuristic_uncertainty_test: np.ndarray | torch.Tensor
+    ) -> tuple[np.ndarray | torch.Tensor, float]:
+        """Make predictions on test data.
+
+        Args:
+            heuristic_uncertainty_test (np.ndarray | torch.Tensor): Heuristic uncertainty of
+                the test data.
+
+        Returns:
+            tuple[np.ndarray | torch.Tensor, float]: Calibrated uncertainty values and qhat value.
+        """
+        cp_uncertainty_test = heuristic_uncertainty_test * self.qhat
+        return cp_uncertainty_test, self.qhat
+
+
+class EnsembleUncertainty(Uncertainty):
+    """Ensemble uncertainty estimation using the variance or standard deviation of the
     predictions from the model ensemble.
     """
 
-    def __init__(
+    def __init__(  # noqa: D107
         self,
         quantity: str,
         order: str,
@@ -469,7 +545,7 @@ class EnsembleUncertainty(Uncertainty):
             nbr_key=nbr_key,
             calibrate=calibrate,
             cp_alpha=cp_alpha,
-            *args,
+            *args,  # noqa: B026
             **kwargs,
         )
         assert std_or_var in [
@@ -483,10 +559,19 @@ class EnsembleUncertainty(Uncertainty):
 
     def convert_units(
         self, value: Union[float, np.ndarray], orig_unit: str, targ_unit: str
-    ):
+    ) -> Union[float, np.ndarray]:
+        """Convert the energy/forces units of the value from orig_unit to targ_unit.
+
+        Args:
+            value (float | np.ndarray): Value to be converted.
+            orig_unit (str): Original unit of the value.
+            targ_unit (str): Target unit of the value.
+
+        Returns:
+            float | np.ndarray: Converted value.
         """
-        Convert the energy/forces units of the value from orig_unit to targ_unit.
-        """
+        assert orig_unit in ["eV", "kcal/mol", "kJ/mol"], f"{orig_unit} not implemented"
+        assert targ_unit in ["eV", "kcal/mol", "kJ/mol"], f"{targ_unit} not implemented"
         if orig_unit == targ_unit:
             return value
 
@@ -502,9 +587,14 @@ class EnsembleUncertainty(Uncertainty):
     def get_energy_uncertainty(
         self,
         results: dict,
-    ):
-        """
-        Get the uncertainty for the energy.
+    ) -> Union[np.ndarray, torch.Tensor]:
+        """Get the uncertainty for the energy.
+
+        Args:
+            results (dict): Dictionary containing the results from the model.
+
+        Returns:
+            np.ndarray | torch.Tensor: Uncertainty values for the energy.
         """
         if self.orig_unit is not None and self.targ_unit is not None:
             results[self.q] = self.convert_units(
@@ -524,9 +614,17 @@ class EnsembleUncertainty(Uncertainty):
         num_atoms: List[int],
         *args,
         **kwargs,
-    ):
-        """
-        Get the uncertainty for the forces.
+    ) -> torch.Tensor:
+        """Get the uncertainty for the forces.
+
+        Args:
+            results (dict): Dictionary containing the results from the model.
+            num_atoms (List[int]): List of number of atoms in each system.
+            args: Additional arguments.
+            kwargs: Additional keyword arguments.
+
+        Returns:
+            torch.Tensor: Uncertainty values for the forces.
         """
         if self.orig_unit is not None and self.targ_unit is not None:
             results[self.q] = self.convert_units(
@@ -545,8 +643,9 @@ class EnsembleUncertainty(Uncertainty):
 
         return val
 
-    def get_atomic_uncertainty(self, results: dict, *args, **kwargs):
-        return self.get_forces_uncertainty(results=results, *args, **kwargs)
+    def get_atomic_uncertainty(self, results: dict, *args, **kwargs) -> torch.Tensor:
+        """Get the uncertainty for each atom."""
+        return self.get_forces_uncertainty(results=results, *args, **kwargs)  # noqa: B026
 
     def get_uncertainty(
         self,
@@ -555,7 +654,20 @@ class EnsembleUncertainty(Uncertainty):
         reset_min_uncertainty: bool = False,
         *args,
         **kwargs,
-    ):
+    ) -> torch.Tensor:
+        """Get the uncertainty from the results.
+
+        Args:
+            results (dict): Dictionary containing the results from the model.
+            num_atoms (List[int] | None): List of number of atoms in each system.
+            reset_min_uncertainty (bool): Reset the minimum uncertainty value
+                to the current uncertainty value.
+            args: Additional arguments.
+            kwargs: Additional keyword arguments.
+
+        Returns:
+            torch.Tensor: Uncertainty values for the model.
+        """
         if self.q == "energy":
             val = self.get_energy_uncertainty(results=results)
             val = self.normalize_to_min_uncertainty(val)
@@ -576,18 +688,16 @@ class EnsembleUncertainty(Uncertainty):
 
 
 class EvidentialUncertainty(Uncertainty):
-    """
-    Evidential Uncertainty estimation using the Evidential Deep Learning framework.
-    """
+    """Evidential Uncertainty estimation using the Evidential Deep Learning framework."""
 
-    def __init__(
+    def __init__(  # noqa: D107
         self,
         order: str = "atomic",
         shared_v: bool = False,
         source: str = "epistemic",
         calibrate: bool = False,
         cp_alpha: Union[float, None] = None,
-        min_uncertainty: float = None,
+        min_uncertainty: Optional[float] = None,
         set_min_uncertainty_at_level: str = "system",
         nbr_key: str = "nbr_list",
         *args,
@@ -600,7 +710,7 @@ class EvidentialUncertainty(Uncertainty):
             min_uncertainty=min_uncertainty,
             set_min_uncertainty_at_level=set_min_uncertainty_at_level,
             nbr_key=nbr_key,
-            *args,
+            *args,  # noqa: B026
             **kwargs,
         )
         self.shared_v = shared_v
@@ -609,22 +719,30 @@ class EvidentialUncertainty(Uncertainty):
     def check_params(
         self, results: dict, num_atoms=None
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """
-        Check if the parameters are present in the results, if the shapes are
+        """Check if the parameters are present in the results, if the shapes are
         correct. If the order is "atomic" and shared_v is True, then the v
         parameter is averaged over the systems.
+
+        Args:
+            results (dict): Dictionary containing the results from the model.
+            num_atoms (List[int] | None): List of number of atoms in each system.
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: Tuple of v, alpha, and
+                beta parameters.
         """
         v = results["v"].squeeze()
         alpha = results["alpha"].squeeze()
         beta = results["beta"].squeeze()
-        assert (
-            alpha.shape == beta.shape
-        ), f"Shape of alpha {alpha.shape} and beta {beta.shape} do not match"
+        assert alpha.shape == beta.shape, (
+            f"Shape of alpha {alpha.shape} and beta {beta.shape} do not match"
+        )
 
         num_systems = len(num_atoms)
         total_atoms = torch.sum(num_atoms)
         if self.order == "atomic" and self.shared_v:
-            assert v.shape[0] == num_systems and alpha.shape[0] == total_atoms
+            assert v.shape[0] == num_systems
+            assert alpha.shape[0] == total_atoms
             v = torch.split(v, list(num_atoms))
             v = torch.stack(v, dim=0)
             v = v.mean(-1, keepdims=True)
@@ -635,8 +753,18 @@ class EvidentialUncertainty(Uncertainty):
     def get_atomic_uncertainty(
         self, results: dict, num_atoms: Union[List[int], None] = None, *args, **kwargs
     ) -> torch.Tensor:
-        v, alpha, beta = self.check_params(
-            results=results, num_atoms=num_atoms)
+        """Get the uncertainty for each atom.
+
+        Args:
+            results (dict): Dictionary containing the results from the model.
+            num_atoms (List[int] | None): List of number of atoms in each system.
+            args: Additional arguments.
+            kwargs: Additional keyword arguments.
+
+        Returns:
+            torch.Tensor: Uncertainty values for each atom.
+        """
+        v, alpha, beta = self.check_params(results=results, num_atoms=num_atoms)
 
         if self.source == "aleatoric":
             uncertainty = beta / (alpha - 1)
@@ -653,16 +781,14 @@ class EvidentialUncertainty(Uncertainty):
 
 
 class MVEUncertainty(Uncertainty):
-    """
-    Mean Variance Estimation (MVE) based uncertainty estimation.
-    """
+    """Mean Variance Estimation (MVE) based uncertainty estimation."""
 
-    def __init__(
+    def __init__(  # noqa: D107
         self,
         variance_key: str = "var",
         quantity: str = "forces",
         order: str = "atomic",
-        min_uncertainty: float = None,
+        min_uncertainty: Optional[float] = None,
         set_min_uncertainty_at_level: str = "system",
         nbr_key: str = "nbr_list",
         *args,
@@ -673,15 +799,26 @@ class MVEUncertainty(Uncertainty):
             min_uncertainty=min_uncertainty,
             set_min_uncertainty_at_level=set_min_uncertainty_at_level,
             nbr_key=nbr_key,
-            *args,
+            *args,  # noqa: B026
             **kwargs,
         )
         self.vkey = variance_key
         self.q = quantity
 
     def get_atomic_uncertainty(
-        self, results: dict, num_atoms: Union[List[int], None] = None, *args, **kwargs
+        self, results: dict, num_atoms: Optional[List[int]] = None, *args, **kwargs
     ) -> torch.Tensor:
+        """Get the uncertainty for each atom.
+
+        Args:
+            results (dict): Dictionary containing the results from the model.
+            num_atoms (List[int] | None): List of number of atoms in each system.
+            args: Additional arguments.
+            kwargs: Additional keyword arguments.
+
+        Returns:
+            torch.Tensor: Uncertainty values for each atom.
+        """
         var = results[self.vkey].squeeze()
         assert results[self.q].shape[0] == var.shape[0]
 
@@ -702,9 +839,20 @@ class MVEUncertainty(Uncertainty):
         *args,
         **kwargs,
     ) -> torch.Tensor:
-        var = self.get_atomic_uncertainty(
-            results=results, num_atoms=num_atoms, *args, **kwargs
-        )
+        """Get the uncertainty from the results.
+
+        Args:
+            results (dict): Dictionary containing the results from the model.
+            num_atoms (List[int] | None): List of number of atoms in each system.
+            reset_min_uncertainty (bool): Reset the minimum uncertainty value
+                to the current uncertainty value.
+            args: Additional arguments.
+            kwargs: Additional keyword arguments.
+
+        Returns:
+            torch.Tensor: Uncertainty values for the model.
+        """
+        var = self.get_atomic_uncertainty(results=results, num_atoms=num_atoms, *args, **kwargs)  # noqa: B026
 
         if self.q == "energy":
             var = self.normalize_to_min_uncertainty(var)
@@ -714,7 +862,7 @@ class MVEUncertainty(Uncertainty):
                 results=results,
                 num_atoms=num_atoms,
                 reset_min_uncertainty=reset_min_uncertainty,
-                *args,
+                *args,  # noqa: B026
                 **kwargs,
             )
 
@@ -725,8 +873,7 @@ class MVEUncertainty(Uncertainty):
 
 
 class GMMUncertainty(Uncertainty):
-    """
-    Gaussian Mixture Model (GMM) based uncertainty estimation.
+    """Gaussian Mixture Model (GMM) based uncertainty estimation.
 
     Args:
         train_embed_key (str): Key for the training embedding in the results dictionary
@@ -750,7 +897,7 @@ class GMMUncertainty(Uncertainty):
         nbr_key (str): Key for the neighbor list in the results dictionary
     """
 
-    def __init__(
+    def __init__(  # noqa: D107
         self,
         train_embed_key: str = "train_embedding",
         test_embed_key: str = "embedding",
@@ -764,10 +911,10 @@ class GMMUncertainty(Uncertainty):
         verbose: int = 0,
         device: str = "cuda",
         calibrate: bool = False,
-        cp_alpha: Union[float, None] = None,
-        min_uncertainty: Union[float, None] = None,
+        cp_alpha: Optional[float] = None,
+        min_uncertainty: Optional[float] = None,
         set_min_uncertainty_at_level: str = "system",
-        gmm_path: Union[str, None] = None,
+        gmm_path: Optional[str] = None,
         nbr_key: str = "nbr_list",
         *args,
         **kwargs,
@@ -779,7 +926,7 @@ class GMMUncertainty(Uncertainty):
             min_uncertainty=min_uncertainty,
             set_min_uncertainty_at_level=set_min_uncertainty_at_level,
             device=device,
-            *args,
+            *args,  # noqa: B026
             **kwargs,
         )
         self.train_key = train_embed_key
@@ -803,11 +950,12 @@ class GMMUncertainty(Uncertainty):
             # Set the GMM parameters if the model is loaded
             self._set_gmm_params()
 
-    def fit_gmm(
-        self, Xtrain: torch.Tensor, atomic_numbers: Union[None, torch.Tensor] = None
-    ) -> None:
-        """
-        Fit the GMM model to the embedding of training data.
+    def fit_gmm(self, Xtrain: torch.Tensor, atomic_numbers: Optional[torch.Tensor] = None) -> None:
+        """Fit the GMM model to the embedding of training data.
+
+        Args:
+            Xtrain (torch.Tensor): Training data embedding
+            atomic_numbers (torch.Tensor | None): Atomic numbers of the training data
         """
         self.Xtrain = Xtrain
         if isinstance(self.n_clusters, int):
@@ -823,12 +971,12 @@ class GMMUncertainty(Uncertainty):
             self.gm_model.fit(self.Xtrain.squeeze().cpu().numpy())
 
         elif isinstance(self.n_clusters, dict):
-            assert (
-                atomic_numbers is not None
-            ), "Atomic numbers must be provided if n_clusters is a dict"
+            assert atomic_numbers is not None, (
+                "Atomic numbers must be provided if n_clusters is a dict"
+            )
 
             self.gm_model = {}
-            for i, (Z, n_clusters) in enumerate(self.n_clusters.items()):
+            for Z, n_clusters in self.n_clusters.items():
                 idx = atomic_numbers == Z
                 Xtrain_Z = self.Xtrain[idx]
                 gm_model = GaussianMixture(
@@ -844,9 +992,7 @@ class GMMUncertainty(Uncertainty):
                 self.gm_model[Z] = gm_model
 
         else:
-            raise TypeError(
-                f"n_clusters must be an int or a dict, not a {type(self.n_clusters)}"
-            )
+            raise TypeError(f"n_clusters must be an int or a dict, not a {type(self.n_clusters)}")
 
         # Save the fitted GMM model if gmm_path is specified
         if (
@@ -864,17 +1010,20 @@ class GMMUncertainty(Uncertainty):
         self._set_gmm_params()
 
     def is_fitted(self) -> bool:
-        """
-        Check if the GMM model is fitted.
-        """
+        """Check if the GMM model is fitted."""
         return hasattr(self, "gm_model") is True
 
     def _check_tensor(
         self,
         X: Union[torch.Tensor, np.ndarray],
     ) -> torch.Tensor:
-        """
-        Check if the input is a tensor and convert to torch.Tensor if not.
+        """Check if the input is a tensor and convert to torch.Tensor if not.
+
+        Args:
+            X (Union[torch.Tensor, np.ndarray]): Input data.
+
+        Returns:
+            torch.Tensor: Converted tensor.
         """
         if not isinstance(X, torch.Tensor):
             X = torch.tensor(X)
@@ -884,17 +1033,13 @@ class GMMUncertainty(Uncertainty):
         return X
 
     def _set_gmm_params(self) -> None:
-        """
-        Get the means, precisions_cholesky, and weights from the GMM model.
-        """
+        """Get the means, precisions_cholesky, and weights from the GMM model."""
         if getattr(self, "gm_model", None) is None:
             raise Exception("GMMUncertainty: GMM does not exist/is not fitted")
 
         if isinstance(self.gm_model, GaussianMixture):
             self.means = self._check_tensor(self.gm_model.means_)
-            self.precisions_cholesky = self._check_tensor(
-                self.gm_model.precisions_cholesky_
-            )
+            self.precisions_cholesky = self._check_tensor(self.gm_model.precisions_cholesky_)
             self.weights = self._check_tensor(self.gm_model.weights_)
 
         elif isinstance(self.gm_model, dict):
@@ -903,9 +1048,7 @@ class GMMUncertainty(Uncertainty):
             self.weights = {}
             for Z, gm_model in self.gm_model.items():
                 self.means[Z] = self._check_tensor(gm_model.means_)
-                self.precisions_cholesky[Z] = self._check_tensor(
-                    gm_model.precisions_cholesky_
-                )
+                self.precisions_cholesky[Z] = self._check_tensor(gm_model.precisions_cholesky_)
                 self.weights[Z] = self._check_tensor(gm_model.weights_)
 
         else:
@@ -914,29 +1057,63 @@ class GMMUncertainty(Uncertainty):
     def estimate_log_prob(
         self, X: torch.Tensor, means: torch.Tensor, precisions_cholesky: torch.Tensor
     ) -> torch.Tensor:
+        """Estimate the log probability of the given embedding.
+
+        Args:
+            X (torch.Tensor): Input data.
+            means (torch.Tensor): Means of the GMM model.
+            precisions_cholesky (torch.Tensor): Cholesky decomposition of the precision
+                matrix of the GMM model.
+
+        Returns:
+            torch.Tensor: Log probability of the input data.
         """
-        Estimate the log probability of the given embedding.
-        """
-        X = self._check_tensor(X)
+        try:
+            X = self._check_tensor(X)
 
-        n_samples, n_features = X.shape
-        n_clusters, _ = means.shape
+            n_samples, n_features = X.shape
+            n_clusters, _ = means.shape
 
-        log_det = torch.sum(
-            torch.log(
-                precisions_cholesky.reshape(
-                    n_clusters, -1)[:, :: n_features + 1]
-            ),
-            dim=1,
-        )
+            # Get the diagonal elements of the cholesky matrix and check for zeros/negatives
+            # diag_indices = np.arange(n_features)
+            diag_elements = precisions_cholesky.reshape(n_clusters, -1)[:, :: n_features + 1]
 
-        log_prob = torch.empty((n_samples, n_clusters)).to(X.device)
-        for k, (mu, prec_chol) in enumerate(zip(means, precisions_cholesky)):
-            y = torch.matmul(X, prec_chol) - \
-                (mu.reshape(1, -1) @ prec_chol).squeeze()
-            log_prob[:, k] = torch.sum(torch.square(y), dim=1)
-        log2pi = torch.log(torch.tensor([2 * torch.pi])).to(X.device)
-        return -0.5 * (n_features * log2pi + log_prob) + log_det
+            log_det = torch.sum(
+                torch.log(diag_elements),
+                dim=1,
+            )
+
+            log_prob = torch.empty((n_samples, n_clusters)).to(X.device)
+
+            for k, (mu, prec_chol) in enumerate(zip(means, precisions_cholesky)):
+                # Check if mu has NaN
+                if torch.isnan(mu).any():
+                    print(f"WARNING: mu for cluster {k} has NaN values")
+
+                # Check if prec_chol has NaN
+                if torch.isnan(prec_chol).any():
+                    print(f"WARNING: prec_chol for cluster {k} has NaN values")
+
+                mu_prod = (mu.reshape(1, -1) @ prec_chol).squeeze()
+                X_prod = torch.matmul(X, prec_chol)
+                y = X_prod - mu_prod
+                y_squared = torch.square(y)
+                sum_y_squared = torch.sum(y_squared, dim=1)
+
+                log_prob[:, k] = sum_y_squared
+
+            log2pi = torch.log(torch.tensor([2 * torch.pi])).to(X.device)
+
+            result = -0.5 * (n_features * log2pi + log_prob) + log_det
+
+        except Exception as e:
+            import traceback
+
+            print(f"ERROR in estimate_log_prob: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
+            raise
+
+        return result
 
     def estimate_weighted_log_prob(
         self,
@@ -945,8 +1122,17 @@ class GMMUncertainty(Uncertainty):
         precisions_cholesky: torch.Tensor,
         weights: torch.Tensor,
     ) -> torch.Tensor:
-        """
-        Estimate the weighted log probability of the given embedding.
+        """Estimate the weighted log probability of the given embedding.
+
+        Args:
+            X (torch.Tensor): Input data.
+            means (torch.Tensor): Means of the GMM model.
+            precisions_cholesky (torch.Tensor): Cholesky decomposition of the precision
+                matrix of the GMM model.
+            weights (torch.Tensor): Weights of the GMM model.
+
+        Returns:
+            torch.Tensor: Weighted log probability of the input data.
         """
         log_prob = self.estimate_log_prob(X, means, precisions_cholesky)
         log_weights = torch.log(weights)
@@ -961,21 +1147,40 @@ class GMMUncertainty(Uncertainty):
         precisions_cholesky: torch.Tensor,
         weights: torch.Tensor,
     ) -> torch.Tensor:
-        """
-        Log likelihood of the embedding under the GMM model.
-        """
-        weighted_log_prob = self.estimate_weighted_log_prob(
-            X, means, precisions_cholesky, weights
-        )
+        """Log likelihood of the embedding under the GMM model.
 
-        weighted_log_prob_max = weighted_log_prob.max(dim=1).values
-        # logsumexp is numerically unstable for big arguments
-        # below, the calculation below makes it stable
-        # log(sum_i(a_i)) = log(exp(a_max) * sum_i(exp(a_i - a_max))) = a_max + log(sum_i(exp(a_i - a_max)))
-        wlp_stable = weighted_log_prob - weighted_log_prob_max.reshape(-1, 1)
-        logsumexp = weighted_log_prob_max + torch.log(
-            torch.sum(torch.exp(wlp_stable), dim=1)
-        )
+        Args:
+            X (torch.Tensor): Input data.
+            means (torch.Tensor): Means of the GMM model.
+            precisions_cholesky (torch.Tensor): Cholesky decomposition of the precision
+                matrix of the GMM model.
+            weights (torch.Tensor): Weights of the GMM model.
+
+        Returns:
+            torch.Tensor: Log likelihood of the input data.
+        """
+        try:
+            weighted_log_prob = self.estimate_weighted_log_prob(
+                X, means, precisions_cholesky, weights
+            )
+            weighted_log_prob_max = weighted_log_prob.max(dim=1).values
+
+            # logsumexp is numerically unstable for big arguments
+            # below, the calculation below makes it stable
+            # log(sum_i(a_i)) = log(exp(a_max) * sum_i(exp(a_i - a_max)))
+            #                 = a_max + log(sum_i(exp(a_i - a_max)))
+            wlp_stable = weighted_log_prob - weighted_log_prob_max.reshape(-1, 1)
+            exp_wlp = torch.exp(wlp_stable)
+            sum_exp = torch.sum(exp_wlp, dim=1)
+            log_sum = torch.log(sum_exp)
+            logsumexp = weighted_log_prob_max + log_sum
+
+        except Exception as e:
+            import traceback
+
+            print(f"ERROR in log_likelihood: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
+            raise
 
         return logsumexp
 
@@ -986,8 +1191,17 @@ class GMMUncertainty(Uncertainty):
         precisions_cholesky: torch.Tensor,
         weights: torch.Tensor,
     ) -> torch.Tensor:
-        """
-        Probability of the embedding under the GMM model.
+        """Probability of the embedding under the GMM model.
+
+        Args:
+            X (torch.Tensor): Input data.
+            means (torch.Tensor): Means of the GMM model.
+            precisions_cholesky (torch.Tensor): Cholesky decomposition of the precision
+                matrix of the GMM model.
+            weights (torch.Tensor): Weights of the GMM model.
+
+        Returns:
+            torch.Tensor: Probability of the input data.
         """
         logP = self.log_likelihood(X, means, precisions_cholesky, weights)
 
@@ -998,56 +1212,82 @@ class GMMUncertainty(Uncertainty):
         X: torch.Tensor,
         atomic_numbers: Union[torch.Tensor, None] = None,
     ) -> torch.Tensor:
-        """
-        Negative log likelihood of the embedding under the GMM model.
+        """Negative log likelihood of the embedding under the GMM model.
+
+        Args:
+            X (torch.Tensor): Input data.
+            atomic_numbers (torch.Tensor | None): Atomic numbers of the input data.
+                If None, then the GMM model is assumed to be a single model.
+
+        Returns:
+            torch.Tensor: Negative log likelihood of the input data.
         """
         if isinstance(self.gm_model, GaussianMixture):
-            neglogP = -self.log_likelihood(
-                X, self.means, self.precisions_cholesky, self.weights
-            )
+            try:
+                logP = self.log_likelihood(X, self.means, self.precisions_cholesky, self.weights)
+                neglogP = -logP
+
+            except Exception as e:
+                import traceback
+
+                print(f"ERROR calculating log likelihood: {e}")
+                print(f"Traceback: {traceback.format_exc()}")
+                raise
 
         else:
-            assert (
-                atomic_numbers is not None
-            ), "Atomic numbers must be provided if gm_model is a dict"
-
-            neglogP = torch.zeros(
-                len(atomic_numbers), dtype=torch.float64, device=self.device
+            print("Using per-element GaussianMixture models")
+            assert atomic_numbers is not None, (
+                "Atomic numbers must be provided if gm_model is a dict"
             )
-            for Z, gm_model in self.gm_model.items():
-                idx = np.where(atomic_numbers == Z)[0]
-                X_Z = X[idx]
-                logP_Z = self.log_likelihood(
-                    X_Z, self.means[Z], self.precisions_cholesky[Z], self.weights[Z]
-                )
-                neglogP[idx] = -logP_Z
 
-                self.save_indices_of_atom_types(key=Z, indices=idx)
+            try:
+                neglogP = torch.zeros(len(atomic_numbers), dtype=torch.float64, device=self.device)
+                for Z in self.gm_model:
+                    idx = np.where(atomic_numbers == Z)[0]
+                    X_Z = X[idx]
+                    logP_Z = self.log_likelihood(
+                        X_Z, self.means[Z], self.precisions_cholesky[Z], self.weights[Z]
+                    )
+                    neglogP[idx] = -logP_Z
+
+                    self.save_indices_of_atom_types(key=Z, indices=idx)
+            except Exception as e:
+                import traceback
+
+                print(f"ERROR calculating per-element log likelihood: {e}")
+                print(f"Traceback: {traceback.format_exc()}")
+                raise
 
         return neglogP
 
     def get_atomic_uncertainty(
         self,
         results: dict,
-        num_atoms: Union[List[int], None] = None,
+        num_atoms: Optional[List[int]] = None,
         *args,
         **kwargs,
     ) -> torch.Tensor:
-        """
-        Get the uncertainty from the GMM model for the test embedding.
-        """
+        """Get the uncertainty from the GMM model for the test embedding.
 
+        Args:
+            results (dict): Dictionary containing the results from the model.
+            num_atoms (List[int] | None): List of number of atoms in each system.
+            args: Additional arguments.
+            kwargs: Additional keyword arguments.
+
+        Returns:
+            torch.Tensor: Uncertainty values for the model.
+        """
         # Check if the GMM model is fitted and fit if not
         if self.is_fitted() is False:
             train_embedding = self._check_tensor(results[self.train_key])
-            train_atomic_numbers = results.get("train_atomic_numbers", None)
+            train_atomic_numbers = results.get("train_atomic_numbers")
             self.fit_gmm(train_embedding, train_atomic_numbers)
 
         # Get negative log likelihood for the test embedding
         test_embedding = self._check_tensor(results[self.test_key])
-        test_atomic_numbers = results.get("test_atomic_numbers", None)
-        uncertainty = self.negative_log_likelihood(
-            test_embedding, test_atomic_numbers)
+        test_atomic_numbers = results.get("test_atomic_numbers")
+        uncertainty = self.negative_log_likelihood(test_embedding, test_atomic_numbers)
 
         # Reshape the uncertainty to (num_systems, num_atoms)
         splits = torch.split(uncertainty, list(num_atoms))

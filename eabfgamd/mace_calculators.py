@@ -1,13 +1,13 @@
-"""
-NOTE: The code here for MACECalculator is copied from the original MACE github repo
+"""NOTE: The code here for MACECalculator is copied from the original MACE github repo
 (https://github.com/ACEsuit/mace/blob/main/mace/calculators/mace.py) and modified
 to fit our application. Please refer to the original repo for original code.
 """
 
+from __future__ import annotations
+
 import os
 import urllib.request
-from pathlib import Path
-from typing import List, Tuple, Union
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -18,7 +18,7 @@ from ase.stress import full_3x3_to_voigt_6_stress
 
 # mace imports
 from mace import data
-from mace.modules.utils import extract_equivariant, extract_invariant
+from mace.modules.utils import extract_invariant  # , extract_equivariant
 from mace.tools import torch_geometric, torch_tools, utils
 from nff.train.uncertainty import (
     EnsembleUncertainty,
@@ -27,8 +27,11 @@ from nff.train.uncertainty import (
     MVEUncertainty,
 )
 
-from ala.colvars import ColVar as CV
-from ala.ensemble import Ensemble
+from .colvars import ColVar as CV
+from .ensemble import Ensemble
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 DEFAULT_CUTOFF = 5.0
 DEFAULT_SKIN = 1.0
@@ -52,8 +55,12 @@ UNC_DICT = {
     "mve": MVEUncertainty,
     "gmm": GMMUncertainty,
 }
+SAMD_FORM = "samd: Vmax - epot - (1/k)*log[(c + exp(k*(Vmax - Vmin)))/(c + exp(k*(epot - Vmin)))]"
+GAMD_FORM_TRIM = "0.5 * k0/(Vmax - Vmin) * (E - epot)^2"
 
-local_model_path = f"{os.getenv('PROJECTSDIR')}/mace/mace/calculators/foundations_models/2023-12-03-mace-mp.model"
+local_model_path = (
+    f"{os.getenv('PROJECTSDIR')}/mace/mace/calculators/foundations_models/2023-12-03-mace-mp.model"
+)
 
 
 def get_model_dtype(model: torch.nn.Module) -> torch.dtype:
@@ -67,8 +74,8 @@ def get_model_dtype(model: torch.nn.Module) -> torch.dtype:
 
 
 class MACECalculator(Calculator):
-    """
-    NOTE: This code is copied from the original MACE repo (https://github.com/ACEsuit/mace/blob/main/mace/calculators/mace.py)
+    """NOTE: This code is copied from the original MACE repo
+    (https://github.com/ACEsuit/mace/blob/main/mace/calculators/mace.py)
     and modified slightly to fit our application.
 
     MACE ASE Calculator
@@ -86,7 +93,7 @@ class MACECalculator(Calculator):
     Dipoles are returned in units of Debye
     """
 
-    def __init__(
+    def __init__(  # noqa: D107
         self,
         model_path: str,
         device: str,
@@ -124,10 +131,15 @@ class MACECalculator(Calculator):
             ]
         else:
             raise ValueError(
-                f"Give a valid model_type: [MACE, DipoleMACE, EnergyDipoleMACE], {model_type} not supported"
+                f"Give a valid model_type: [MACE, DipoleMACE, EnergyDipoleMACE], {model_type}"
+                " not supported"
             )
 
-        self.model = torch.load(f=model_path).to(device)
+        print(f"Loading model from {model_path}")
+        if isinstance(model_path, str):
+            self.model = torch.load(f=model_path).to(device)
+        else:
+            self.model = model_path.to(device)
         if model_path.endswith("ensemble") is False:
             self.model = Ensemble([self.model])
 
@@ -136,14 +148,13 @@ class MACECalculator(Calculator):
         self.device = torch_tools.init_device(device)
         self.energy_units_to_eV = energy_units_to_eV
         self.length_units_to_A = length_units_to_A
-        self.z_table = utils.AtomicNumberTable(
-            [int(z) for z in self.model.atomic_numbers]
-        )
+        self.z_table = utils.AtomicNumberTable([int(z) for z in self.model.atomic_numbers])
         self.charges_key = charges_key
         model_dtype = get_model_dtype(self.model)
         if model_dtype != default_dtype:
             print(
-                f"Changing default dtype to {model_dtype} to match model dtype, save a new version of the model to overload the type."
+                f"Changing default dtype to {model_dtype} to match model dtype, save a new version"
+                " of the model to overload the type."
             )
             default_dtype = model_dtype
         torch_tools.set_default_dtype(default_dtype)
@@ -166,15 +177,17 @@ class MACECalculator(Calculator):
 
             self.the_cvs.append(the_cv)
 
-    def _create_result_tensors(
-        self, model_type: str, num_models: int, num_atoms: int
-    ) -> dict:
-        """
-        Create tensors to store the results of the committee
-        :param model_type: str, type of model to load
+    def _create_result_tensors(self, model_type: str, num_models: int, num_atoms: int) -> dict:
+        """Create tensors to store the results of the committee
+
+        Args:
+            model_type (str): type of model to load
                     Options: [MACE, DipoleMACE, EnergyDipoleMACE]
-        :param num_models: int, number of models in the committee
-        :return: tuple of torch tensors
+            num_models (int): number of models in the committee
+            num_atoms (int): number of atoms in the system
+
+        Returns:
+            dict of torch tensors
         """
         dict_of_tensors = {}
         if model_type in ["MACE", "EnergyDipoleMACE"]:
@@ -196,13 +209,18 @@ class MACECalculator(Calculator):
         return dict_of_tensors
 
     # pylint: disable=dangerous-default-value
-    def calculate(self, atoms=None, properties=None, system_changes=all_changes):
-        """
-        Calculate properties.
-        :param atoms: ase.Atoms object
-        :param properties: [str], properties to be computed, used by ASE internally
-        :param system_changes: [str], system changes since last calculation, used by ASE internally
-        :return:
+    def calculate(
+        self,
+        atoms: Optional[Atoms] = None,
+        properties: Optional[str] = None,
+        system_changes: str = all_changes,
+    ) -> None:
+        """Calculate properties.
+
+        Args:
+            atoms (ase.Atoms object): Atoms object
+            properties (str): properties to be computed, used by ASE internally
+            system_changes (str): system changes since last calculation, used by ASE internally
         """
         # call to base-class to set atoms attribute
         Calculator.calculate(self, atoms)
@@ -210,11 +228,7 @@ class MACECalculator(Calculator):
         # prepare data
         config = data.config_from_atoms(atoms, charges_key=self.charges_key)
         data_loader = torch_geometric.dataloader.DataLoader(
-            dataset=[
-                data.AtomicData.from_config(
-                    config, z_table=self.z_table, cutoff=self.r_max
-                )
-            ],
+            dataset=[data.AtomicData.from_config(config, z_table=self.z_table, cutoff=self.r_max)],
             batch_size=1,
             shuffle=False,
             drop_last=False,
@@ -234,9 +248,7 @@ class MACECalculator(Calculator):
         if self.model_type in ["MACE", "EnergyDipoleMACE"]:
             ret_tensors["energy"] = out["energy"] * self.energy_units_to_eV
             ret_tensors["node_energy"] = (out["node_energy"].T - node_e0).T
-            ret_tensors["forces"] = (
-                out["forces"] * self.energy_units_to_eV / self.length_units_to_A
-            )
+            ret_tensors["forces"] = out["forces"] * self.energy_units_to_eV / self.length_units_to_A
             if out["stress"] is not None:
                 ret_tensors["stress"] = (
                     out["stress"] * self.energy_units_to_eV / self.length_units_to_A**3
@@ -266,9 +278,7 @@ class MACECalculator(Calculator):
             self.results["forces_var"] = (
                 torch.var(ret_tensors["forces"], dim=-1).detach().cpu().numpy()
             )
-            self.results["embedding"] = [
-                o.detach().cpu().numpy() for o in out["node_feats"]
-            ]
+            self.results["embedding"] = [o.detach().cpu().numpy() for o in out["node_feats"]]
             self.results["xyz"] = out["xyz"].detach().cpu().numpy()
             if out["stress"] is not None:
                 self.results["stress"] = full_3x3_to_voigt_6_stress(
@@ -288,12 +298,21 @@ class MACECalculator(Calculator):
 
             self.results["cv_vals"] = cvs
 
-    def get_descriptors(self, atoms=None, shift_variance="all", num_layers=-1):
+    def get_descriptors(
+        self, atoms: Optional[Atoms] = None, shift_variance: str = "invariant", num_layers: int = -1
+    ) -> Union[np.ndarray, List[np.ndarray]]:
         """Extracts the descriptors from MACE model.
-        :param atoms: ase.Atoms object
-        :param shift_variance: if all or invariant or equivariant descriptors are return
-        :param num_layers: int, number of layers to extract descriptors from, if -1 all layers are used
-        :return: np.ndarray (num_atoms, num_interactions, invariant_features) of invariant descriptors if num_models is 1 or list[np.ndarray] otherwise
+
+        Args:
+            atoms (ase.Atoms object): Atoms object from which to extract descriptors
+            shift_variance (str): the type of descriptors to be returned, either "all",
+                "invariant", or "equivariant"
+            num_layers (int): number of layers to extract descriptors from, if -1 all layers
+                are used
+
+        Returns:
+            np.ndarray (num_atoms, num_interactions, invariant_features) of invariant descriptors
+                if num_models is 1 or list[np.ndarray] otherwise
         """
         if atoms is None and self.atoms is None:
             raise ValueError("atoms not set")
@@ -311,11 +330,7 @@ class MACECalculator(Calculator):
 
         config = data.config_from_atoms(atoms, charges_key=self.charges_key)
         data_loader = torch_geometric.dataloader.DataLoader(
-            dataset=[
-                data.AtomicData.from_config(
-                    config, z_table=self.z_table, cutoff=self.r_max
-                )
-            ],
+            dataset=[data.AtomicData.from_config(config, z_table=self.z_table, cutoff=self.r_max)],
             batch_size=1,
             shuffle=False,
             drop_last=False,
@@ -335,19 +350,19 @@ class MACECalculator(Calculator):
                 )
                 for d in descriptors
             ]
-        elif shift_variance == "equivariant":
-            irreps_out = self.model.products[0].linear.__dict__["irreps_out"]
-            l_max = irreps_out.lmax
-            num_features = irreps_out.dim // (l_max + 1) ** 2
-            descriptors = [
-                extract_equivariant(
-                    d,
-                    num_layers=num_layers,
-                    num_features=num_features,
-                    l_max=l_max,
-                )
-                for d in descriptors
-            ]
+        # elif shift_variance == "equivariant":
+        #     irreps_out = self.model.products[0].linear.__dict__["irreps_out"]
+        #     l_max = irreps_out.lmax
+        #     num_features = irreps_out.dim // (l_max + 1) ** 2
+        #     descriptors = [
+        #         extract_equivariant(
+        #             d,
+        #             num_layers=num_layers,
+        #             num_features=num_features,
+        #             l_max=l_max,
+        #         )
+        #         for d in descriptors
+        #     ]
 
         descriptors = [d.detach().cpu().numpy() for d in descriptors]
 
@@ -355,7 +370,7 @@ class MACECalculator(Calculator):
 
 
 def MACEMPCalculator(
-    model: Union[str, Path] = None,
+    model: Union[str, Path, None] = None,
     device: str = "",
     default_dtype: str = "float32",
     dispersion: bool = False,
@@ -363,12 +378,14 @@ def MACEMPCalculator(
     dispersion_cutoff=40.0 * units.Bohr,
     **kwargs,
 ) -> MACECalculator:
-    """
-    NOTE: This code is copied from the original MACE repo (https://github.com/ACEsuit/mace/blob/main/mace/calculators/mace.py)
+    """NOTE: This code is copied from the original MACE repo
+    (https://github.com/ACEsuit/mace/blob/main/mace/calculators/mace.py)
     and modified slightly to fit our application.
 
-    Constructs a MACECalculator with a pretrained model based on the Materials Project (89 elements).
-    The model is released under the MIT license. See https://github.com/ACEsuit/mace-mp for all models.
+    Constructs a MACECalculator with a pretrained model based on the Materials
+    Project (89 elements). The model is released under the MIT license. See
+    https://github.com/ACEsuit/mace-mp for all models.
+
     Note:
         If you are using this function, please cite the relevant paper for the Materials Project,
         any paper associated with the MACE model, and also the following:
@@ -386,7 +403,8 @@ def MACEMPCalculator(
         device (str, optional): Device to use for the model. Defaults to "cuda".
         default_dtype (str, optional): Default dtype for the model. Defaults to "float32".
         dispersion (bool, optional): Whether to use D3 dispersion corrections. Defaults to False.
-        dispersion_xc (str, optional): Exchange-correlation functional for D3 dispersion corrections.
+        dispersion_xc (str, optional): Exchange-correlation functional for D3 dispersion
+            corrections.
         dispersion_cutoff (float, optional): Cutoff radius in Bhor for D3 dispersion corrections.
         **kwargs: Passed to MACECalculator and TorchDFTD3Calculator.
 
@@ -395,9 +413,7 @@ def MACEMPCalculator(
     """
     if model in (None, "medium") and os.path.isfile(local_model_path):
         model = local_model_path
-        print(
-            f"Using local medium Materials Project MACE model for MACECalculator {model}"
-        )
+        print(f"Using local medium Materials Project MACE model for MACECalculator {model}")
     elif model in (None, "small", "medium", "large") or str(model).startswith("https:"):
         try:
             urls = dict(
@@ -420,9 +436,7 @@ def MACEMPCalculator(
                 os.makedirs(cache_dir, exist_ok=True)
                 # download and save to disk
                 print(f"Downloading MACE model from {checkpoint_url!r}")
-                _, http_msg = urllib.request.urlretrieve(
-                    checkpoint_url, cached_model_path
-                )
+                _, http_msg = urllib.request.urlretrieve(checkpoint_url, cached_model_path)
                 if "Content-Type: text/html" in http_msg:
                     raise RuntimeError(
                         f"Model download failed, please check the URL {checkpoint_url}"
@@ -432,18 +446,18 @@ def MACEMPCalculator(
             msg = f"Using Materials Project MACE for MACECalculator with {model}"
             print(msg)
         except Exception as exc:
-            raise RuntimeError(
-                "Model download failed and no local model found"
-            ) from exc
+            raise RuntimeError("Model download failed and no local model found") from exc
 
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     if default_dtype == "float64":
         print(
-            "Using float64 for MACECalculator, which is slower but more accurate. Recommended for geometry optimization."
+            "Using float64 for MACECalculator, which is slower but more accurate."
+            " Recommended for geometry optimization."
         )
     if default_dtype == "float32":
         print(
-            "Using float32 for MACECalculator, which is faster but less accurate. Recommended for MD. Use float64 for geometry optimization."
+            "Using float32 for MACECalculator, which is faster but less accurate. Recommended"
+            " for MD. Use float64 for geometry optimization."
         )
     mace_calc = MACECalculator(
         model_path=model, device=device, default_dtype=default_dtype, **kwargs
@@ -453,12 +467,10 @@ def MACEMPCalculator(
         try:
             from torch_dftd.torch_dftd3_calculator import TorchDFTD3Calculator
         except ImportError:
-            raise RuntimeError(
+            raise RuntimeError(  # noqa: B904
                 f"Please install torch-dftd to use dispersion corrections (see {gh_url})"
             )
-        print(
-            f"Using TorchDFTD3Calculator for D3 dispersion corrections (see {gh_url})"
-        )
+        print(f"Using TorchDFTD3Calculator for D3 dispersion corrections (see {gh_url})")
         dtype = torch.float32 if default_dtype == "float32" else torch.float64
         d3_calc = TorchDFTD3Calculator(
             device=device,
@@ -488,7 +500,7 @@ class MACEBiasedCalculator(Calculator):
     Dipoles are returned in units of Debye
     """
 
-    def __init__(
+    def __init__(  # noqa: D107
         self,
         model_path: str,
         device: str,
@@ -525,38 +537,43 @@ class MACEBiasedCalculator(Calculator):
             ]
         else:
             raise ValueError(
-                f"Give a valid model_type: [MACE, DipoleMACE, EnergyDipoleMACE], {model_type} not supported"
+                f"Give a valid model_type: [MACE, DipoleMACE, EnergyDipoleMACE], {model_type}"
+                " not supported"
             )
 
-        self.model = torch.load(f=model_path).to(device)
+        if isinstance(model_path, str):
+            self.model = torch.load(f=model_path).to(device)
+        else:
+            self.model = model_path.to(device)
         self.r_max = float(self.model.r_max.cpu().item())
 
         self.device = torch_tools.init_device(device)
         self.energy_units_to_eV = energy_units_to_eV
         self.length_units_to_A = length_units_to_A
-        self.z_table = utils.AtomicNumberTable(
-            [int(z) for z in self.model.atomic_numbers]
-        )
+        self.z_table = utils.AtomicNumberTable([int(z) for z in self.model.atomic_numbers])
         self.charges_key = charges_key
         model_dtype = get_model_dtype(self.model)
         if model_dtype != default_dtype:
             print(
-                f"Changing default dtype to {model_dtype} to match model dtype, save a new version of the model to overload the type."
+                f"Changing default dtype to {model_dtype} to match model dtype, save a new"
+                " version of the model to overload the type."
             )
             default_dtype = model_dtype
         torch_tools.set_default_dtype(default_dtype)
         for param in self.model.parameters():
             param.requires_grad = False
 
-    def _create_result_tensors(
-        self, model_type: str, num_models: int, num_atoms: int
-    ) -> dict:
-        """
-        Create tensors to store the results of the committee
-        :param model_type: str, type of model to load
-                    Options: [MACE, DipoleMACE, EnergyDipoleMACE]
-        :param num_models: int, number of models in the committee
-        :return: tuple of torch tensors
+    def _create_result_tensors(self, model_type: str, num_models: int, num_atoms: int) -> dict:
+        """Create tensors to store the results of the committee
+
+        Args:
+            model_type (str): type of model to load
+                        Options: [MACE, DipoleMACE, EnergyDipoleMACE]
+            num_models (int): number of models in the committee
+            num_atoms (int): number of atoms in the system
+
+        Returns:
+            dict of torch tensors
         """
         dict_of_tensors = {}
         if model_type in ["MACE", "EnergyDipoleMACE"]:
@@ -578,13 +595,18 @@ class MACEBiasedCalculator(Calculator):
         return dict_of_tensors
 
     # pylint: disable=dangerous-default-value
-    def calculate(self, atoms=None, properties=None, system_changes=all_changes):
-        """
-        Calculate properties.
-        :param atoms: ase.Atoms object
-        :param properties: [str], properties to be computed, used by ASE internally
-        :param system_changes: [str], system changes since last calculation, used by ASE internally
-        :return:
+    def calculate(
+        self,
+        atoms: Optional[Atoms] = None,
+        properties: Optional[str] = None,
+        system_changes: Union[list, str] = all_changes,
+    ) -> None:
+        """Calculate properties.
+
+        Args:
+            atoms (ase.Atoms object): Atoms object
+            properties (str): properties to be computed, used by ASE internally
+            system_changes (str): system changes since last calculation, used by ASE internally
         """
         # call to base-class to set atoms attribute
         Calculator.calculate(self, atoms)
@@ -592,11 +614,7 @@ class MACEBiasedCalculator(Calculator):
         # prepare data
         config = data.config_from_atoms(atoms, charges_key=self.charges_key)
         data_loader = torch_geometric.dataloader.DataLoader(
-            dataset=[
-                data.AtomicData.from_config(
-                    config, z_table=self.z_table, cutoff=self.r_max
-                )
-            ],
+            dataset=[data.AtomicData.from_config(config, z_table=self.z_table, cutoff=self.r_max)],
             batch_size=1,
             shuffle=False,
             drop_last=False,
@@ -613,12 +631,12 @@ class MACEBiasedCalculator(Calculator):
         ret_tensors = {}
         batch = batch_base.clone()
         out = self.model(batch.to_dict(), training=True, compute_stress=compute_stress)
+        if not hasattr(out, "xyz"):
+            out["xyz"] = atoms.positions
         if self.model_type in ["MACE", "EnergyDipoleMACE"]:
             ret_tensors["energy"] = out["energy"] * self.energy_units_to_eV
             ret_tensors["node_energy"] = (out["node_energy"].T - node_e0).T
-            ret_tensors["forces"] = (
-                out["forces"] * self.energy_units_to_eV / self.length_units_to_A
-            )
+            ret_tensors["forces"] = out["forces"] * self.energy_units_to_eV / self.length_units_to_A
             if out["stress"] is not None:
                 ret_tensors["stress"] = (
                     out["stress"] * self.energy_units_to_eV / self.length_units_to_A**3
@@ -637,21 +655,35 @@ class MACEBiasedCalculator(Calculator):
             self.results["embedding"] = out["node_feats"]
             self.results["xyz"] = out["xyz"]
             if out["stress"] is not None:
-                self.results["stress"] = full_3x3_to_voigt_6_stress(
-                    torch.mean(ret_tensors["stress"], dim=-1).detach().cpu()
-                )
+                if out["stress"].shape[-1] == 3 and out["stress"].shape[-2] == 3:
+                    self.results["stress"] = full_3x3_to_voigt_6_stress(
+                        torch.mean(ret_tensors["stress"], dim=0).detach().cpu()
+                    )
+                elif out["stress"].shape[0] == 3 and out["stress"].shape[1] == 3:
+                    self.results["stress"] = full_3x3_to_voigt_6_stress(
+                        torch.mean(ret_tensors["stress"], dim=-1).detach().cpu()
+                    )
 
         if self.model_type in ["DipoleMACE", "EnergyDipoleMACE"]:
             self.results["dipole"] = torch.mean(ret_tensors["dipole"], dim=0)
 
         self.results["nbr_list"] = torch.LongTensor(atoms.nbr_list).to(self.device)
 
-    def get_descriptors(self, atoms=None, shift_variance="all", num_layers=-1):
+    def get_descriptors(
+        self, atoms: Optional[Atoms] = None, shift_variance: str = "invariant", num_layers: int = -1
+    ) -> Union[np.ndarray, List[np.ndarray]]:
         """Extracts the descriptors from MACE model.
-        :param atoms: ase.Atoms object
-        :param shift_variance: if all or invariant or equivariant descriptors are return
-        :param num_layers: int, number of layers to extract descriptors from, if -1 all layers are used
-        :return: np.ndarray (num_atoms, num_interactions, invariant_features) of invariant descriptors if num_models is 1 or list[np.ndarray] otherwise
+
+        Args:
+            atoms (ase.Atoms object): Atoms object from which to extract descriptors
+            shift_variance (str): the type of descriptors to be returned, either "all",
+                "invariant", or "equivariant"
+            num_layers (int): number of layers to extract descriptors from, if -1 all layers
+                are used
+
+        Returns:
+            np.ndarray (num_atoms, num_interactions, invariant_features) of invariant descriptors
+                if num_models is 1 or list[np.ndarray] otherwise
         """
         if atoms is None and self.atoms is None:
             raise ValueError("atoms not set")
@@ -669,11 +701,7 @@ class MACEBiasedCalculator(Calculator):
 
         config = data.config_from_atoms(atoms, charges_key=self.charges_key)
         data_loader = torch_geometric.dataloader.DataLoader(
-            dataset=[
-                data.AtomicData.from_config(
-                    config, z_table=self.z_table, cutoff=self.r_max
-                )
-            ],
+            dataset=[data.AtomicData.from_config(config, z_table=self.z_table, cutoff=self.r_max)],
             batch_size=1,
             shuffle=False,
             drop_last=False,
@@ -693,19 +721,19 @@ class MACEBiasedCalculator(Calculator):
                 )
                 for d in descriptors
             ]
-        elif shift_variance == "equivariant":
-            irreps_out = self.model.products[0].linear.__dict__["irreps_out"]
-            l_max = irreps_out.lmax
-            num_features = irreps_out.dim // (l_max + 1) ** 2
-            descriptors = [
-                extract_equivariant(
-                    d,
-                    num_layers=num_layers,
-                    num_features=num_features,
-                    l_max=l_max,
-                )
-                for d in descriptors
-            ]
+        # elif shift_variance == "equivariant":
+        #     irreps_out = self.model.products[0].linear.__dict__["irreps_out"]
+        #     l_max = irreps_out.lmax
+        #     num_features = irreps_out.dim // (l_max + 1) ** 2
+        #     descriptors = [
+        #         extract_equivariant(
+        #             d,
+        #             num_layers=num_layers,
+        #             num_features=num_features,
+        #             l_max=l_max,
+        #         )
+        #         for d in descriptors
+        #     ]
 
         descriptors = [d.detach().cpu().numpy() for d in descriptors]
 
@@ -718,7 +746,10 @@ class BiasBase(MACEBiasedCalculator):
     Args:
         model: the deural force field model
         cv_def: lsit of Collective Variable (CV) definitions
-            [["cv_type", [atom_indices], np.array([minimum, maximum]), bin_width], [possible second dimension]]
+            [
+             ["cv_type", [atom_indices], np.array([minimum, maximum]), bin_width],
+             [possible second dimension],
+            ]
         equil_temp: float temperature of the simulation (important for extended system dynamics)
     """
 
@@ -737,14 +768,14 @@ class BiasBase(MACEBiasedCalculator):
         "const_vals",
     ]
 
-    def __init__(
+    def __init__(  # noqa: D107
         self,
         model_path: str,
         cv_defs: list[dict],
         equil_temp: float = 300.0,
         device="cpu",
-        cvs: list[CV] = None,
-        extra_constraints: list[dict] = None,
+        cvs: Optional[list[CV]] = None,
+        extra_constraints: Optional[list[dict]] = None,
         energy_units_to_eV=0.0433641,
         length_units_to_A=1.0,
         default_dtype="float32",
@@ -795,31 +826,26 @@ class BiasBase(MACEBiasedCalculator):
         self.conf_k = np.zeros(shape=(self.num_cv, 1))
 
         for ii, cv in enumerate(self.cv_defs):
-            if "range" in cv.keys():
+            if "range" in cv:
                 self.ext_coords[ii] = cv["range"][0]
                 self.ranges[ii] = cv["range"]
             else:
                 raise KeyError("range")
 
-            if "margin" in cv.keys():
+            if "margin" in cv:
                 self.margins[ii] = cv["margin"]
 
-            if "conf_k" in cv.keys():
+            if "conf_k" in cv:
                 self.conf_k[ii] = cv["conf_k"]
 
-            if "ext_k" in cv.keys():
+            if "ext_k" in cv:
                 self.ext_k[ii] = cv["ext_k"]
-            elif "ext_sigma" in cv.keys():
-                self.ext_k[ii] = (units.kB * self.equil_temp) / (
-                    cv["ext_sigma"] * cv["ext_sigma"]
-                )
+            elif "ext_sigma" in cv:
+                self.ext_k[ii] = (units.kB * self.equil_temp) / (cv["ext_sigma"] * cv["ext_sigma"])
             else:
                 raise KeyError("ext_k/ext_sigma")
 
-            if "type" not in cv.keys():
-                self.cv_defs[ii]["type"] = "not_angle"
-            else:
-                self.cv_defs[ii]["type"] = cv["type"]
+            self.cv_defs[ii]["type"] = cv.get("type", "not_angle")
 
         self.constraints = None
         self.num_const = 0
@@ -831,19 +857,16 @@ class BiasBase(MACEBiasedCalculator):
                 self.constraints[-1]["func"] = CV(cv["definition"])
 
                 self.constraints[-1]["pos"] = cv["pos"]
-                if "k" in cv.keys():
+                if "k" in cv:
                     self.constraints[-1]["k"] = cv["k"]
-                elif "sigma" in cv.keys():
+                elif "sigma" in cv:
                     self.constraints[-1]["k"] = (units.kB * self.equil_temp) / (
                         cv["sigma"] * cv["sigma"]
                     )
                 else:
                     raise KeyError("k/sigma")
 
-                if "type" not in cv.keys():
-                    self.constraints[-1]["type"] = "not_angle"
-                else:
-                    self.constraints[-1]["type"] = cv["type"]
+                self.constraints[-1]["type"] = cv.get("type", "not_angle")
 
             self.num_const = len(self.constraints)
 
@@ -863,11 +886,15 @@ class BiasBase(MACEBiasedCalculator):
     def diff(
         self, a: Union[np.ndarray, float], b: Union[np.ndarray, float], cv_type: str
     ) -> Union[np.ndarray, float]:
-        """get difference of elements of numbers or arrays
+        """Get difference of elements of numbers or arrays
         in range(-inf, inf) if is_angle is False or in range(-pi, pi) if is_angle is True
+
         Args:
-            a: number or array
-            b: number or array
+            a (Union[np.ndarray, float]): number or array
+            b (Union[np.ndarray, float]): number or array
+            cv_type: type of CV, used to determine if angle or not
+                Options: [angle, dihedral, not_angle]
+
         Returns:
             diff: element-wise difference (a-b)
         """
@@ -894,17 +921,16 @@ class BiasBase(MACEBiasedCalculator):
         xi: np.ndarray,
         grad_xi: np.ndarray,
     ) -> Tuple[np.ndarray, np.ndarray]:
-        """energy and gradient of bias
+        """Energy and gradient of bias
 
         Args:
-            curr_cv: current value of the cv
-            cv_index: for multidimensional FES
+            xi: current value of the cv
+            grad_xi: for multidimensional FES
 
         Returns:
             bias_ener: bias energy
             bias_grad: gradiant of the bias in CV space, needs to be dotted with the cv_gradient
         """
-
         self._propagate_ext()
         bias_ener, bias_grad = self._extended_dynamics(xi, grad_xi)
 
@@ -921,29 +947,119 @@ class BiasBase(MACEBiasedCalculator):
         bias_grad = np.zeros_like(grad_xi[0])
         bias_ener = 0.0
 
-        for i in range(self.num_cv):
-            # harmonic coupling of extended coordinate to reaction coordinate
-            dxi = self.diff(xi[i], self.ext_coords[i], self.cv_defs[i]["type"])
-            self.ext_forces[i] = self.ext_k[i] * dxi
-            bias_grad += self.ext_k[i] * dxi * grad_xi[i]
-            bias_ener += 0.5 * self.ext_k[i] * dxi**2
+        # Store detailed information for debugging
+        self.harmonic_coupling_details = []
+        self.wall_confinement_details = []
 
-            # harmonic walls for confinement to range of interest
-            if self.ext_coords[i] > (self.ranges[i][1] + self.margins[i]):
-                r = self.diff(
-                    self.ranges[i][1] + self.margins[i],
-                    self.ext_coords[i],
-                    self.cv_defs[i]["type"],
-                )
-                self.ext_forces[i] += self.conf_k[i] * r
+        try:
+            for i in range(self.num_cv):
+                try:
+                    dxi = self.diff(xi[i], self.ext_coords[i], self.cv_defs[i]["type"])
 
-            elif self.ext_coords[i] < (self.ranges[i][0] - self.margins[i]):
-                r = self.diff(
-                    self.ranges[i][0] - self.margins[i],
-                    self.ext_coords[i],
-                    self.cv_defs[i]["type"],
-                )
-                self.ext_forces[i] += self.conf_k[i] * r
+                    self.ext_forces[i] = self.ext_k[i] * dxi
+
+                    # Compute and add bias from harmonic coupling
+                    harmonic_bias_grad = self.ext_k[i] * dxi * grad_xi[i]
+                    harmonic_bias_energy = 0.5 * self.ext_k[i] * dxi**2
+
+                    bias_grad += harmonic_bias_grad
+                    bias_ener += harmonic_bias_energy
+
+                    # Store details
+                    detail_dict = {
+                        "cv_index": i,
+                        "cv_value": xi[i].item() if not np.isnan(xi[i]).any() else "NaN",
+                        "ext_coord": self.ext_coords[i].item()
+                        if not np.isnan(self.ext_coords[i]).any()
+                        else "NaN",
+                        "diff": dxi.item() if not np.isnan(dxi).any() else "NaN",
+                        "k": self.ext_k[i],
+                        "force_on_ext": self.ext_forces[i].item()
+                        if not np.isnan(self.ext_forces[i]).any()
+                        else "NaN",
+                        "bias_energy": harmonic_bias_energy.item()
+                        if not np.isnan(harmonic_bias_energy).any()
+                        else "NaN",
+                        "max_bias_force": np.abs(harmonic_bias_grad).max().item()
+                        if not np.isnan(harmonic_bias_grad).any()
+                        else "NaN",
+                    }
+                    self.harmonic_coupling_details.append(detail_dict)
+
+                except Exception as e:
+                    import traceback
+
+                    print(f"ERROR processing harmonic coupling for CV {i}: {e}")
+                    print(f"Traceback: {traceback.format_exc()}")
+                    raise
+
+                # harmonic walls for confinement to range of interest
+                wall_force = 0.0
+                try:
+                    if self.ext_coords[i] > (self.ranges[i][1] + self.margins[i]):
+                        print("  Applying upper wall constraint")
+                        r = self.diff(
+                            self.ranges[i][1] + self.margins[i],
+                            self.ext_coords[i],
+                            self.cv_defs[i]["type"],
+                        )
+                        wall_force = self.conf_k[i] * r
+                        self.ext_forces[i] += wall_force
+
+                        self.wall_confinement_details.append(
+                            {
+                                "cv_index": i,
+                                "type": "upper_wall",
+                                "ext_coord": self.ext_coords[i].item()
+                                if not np.isnan(self.ext_coords[i]).any()
+                                else "NaN",
+                                "wall_pos": (self.ranges[i][1] + self.margins[i]).item(),
+                                "diff": r.item() if not np.isnan(r).any() else "NaN",
+                                "k": self.conf_k[i].item(),
+                                "force": wall_force.item()
+                                if not np.isnan(wall_force).any()
+                                else "NaN",
+                            }
+                        )
+
+                    elif self.ext_coords[i] < (self.ranges[i][0] - self.margins[i]):
+                        print("  Applying lower wall constraint")
+                        r = self.diff(
+                            self.ranges[i][0] - self.margins[i],
+                            self.ext_coords[i],
+                            self.cv_defs[i]["type"],
+                        )
+                        wall_force = self.conf_k[i] * r
+                        self.ext_forces[i] += wall_force
+
+                        self.wall_confinement_details.append(
+                            {
+                                "cv_index": i,
+                                "type": "lower_wall",
+                                "ext_coord": self.ext_coords[i].item()
+                                if not np.isnan(self.ext_coords[i]).any()
+                                else "NaN",
+                                "wall_pos": (self.ranges[i][0] - self.margins[i]).item(),
+                                "diff": r.item() if not np.isnan(r).any() else "NaN",
+                                "k": self.conf_k[i].item(),
+                                "force": wall_force.item()
+                                if not np.isnan(wall_force).any()
+                                else "NaN",
+                            }
+                        )
+                except Exception as e:
+                    import traceback
+
+                    print(f"ERROR processing wall confinement for CV {i}: {e}")
+                    print(f"Traceback: {traceback.format_exc()}")
+                    raise
+
+        except Exception as e:
+            import traceback
+
+            print(f"ERROR in _extended_dynamics: {e}")
+            print(f"Traceback: {traceback.format_exc()}")
+            raise
 
         return bias_ener, bias_grad
 
@@ -952,7 +1068,7 @@ class BiasBase(MACEBiasedCalculator):
         xi: np.ndarray,
         grad_xi: np.ndarray,
     ) -> Tuple[np.ndarray, np.ndarray]:
-        """energy and gradient of additional harmonic constraint
+        """Energy and gradient of additional harmonic constraint
 
         Args:
             xi: current value of constraint "CV"
@@ -961,16 +1077,12 @@ class BiasBase(MACEBiasedCalculator):
         Returns:
             constr_ener: constraint energy
             constr_grad: gradient of the constraint energy
-
         """
-
         constr_grad = np.zeros_like(grad_xi[0])
         constr_ener = 0.0
 
         for i in range(self.num_const):
-            dxi = self.diff(
-                xi[i], self.constraints[i]["pos"], self.constraints[i]["type"]
-            )
+            dxi = self.diff(xi[i], self.constraints[i]["pos"], self.constraints[i]["type"])
             constr_grad += self.constraints[i]["k"] * dxi * grad_xi[i]
             constr_ener += 0.5 * self.constraints[i]["k"] * dxi**2
 
@@ -978,20 +1090,20 @@ class BiasBase(MACEBiasedCalculator):
 
     def calculate(
         self,
-        atoms=None,
-        properties=None,
-        system_changes=all_changes,
-    ):
+        atoms: Optional[Atoms] = None,
+        properties: Optional[list[str]] = None,
+        system_changes: Union[List[str], str] = all_changes,
+    ) -> None:
         """Calculates the desired properties for the given Atoms.
 
         Args:
-        atoms (Atoms): custom Atoms subclass that contains implementation
-            of neighbor lists, batching and so on. Avoids the use of the List[Atoms]
-            to calculate using the models created.
-        properties: list of keywords that can be present in self.results. Note
-            that the units of energy and energy_grad should be in kcal/mol and
-            kcal/mol/A.
-        system_changes (default from ase)
+            atoms (Atoms): custom Atoms subclass that contains implementation
+                of neighbor lists, batching and so on. Avoids the use of the List[Atoms]
+                to calculate using the models created.
+            properties: list of keywords that can be present in self.results. Note
+                that the units of energy and energy_grad should be in kcal/mol and
+                kcal/mol/A.
+            system_changes (list | str): default from ase
         """
         if properties is None:
             properties = DEFAULT_PROPERTIES
@@ -1034,9 +1146,7 @@ class BiasBase(MACEBiasedCalculator):
             cvs[ii] = xi
             cv_grads[ii] = xi_grad
             cv_grad_lens[ii] = np.linalg.norm(xi_grad)
-            cv_invmass[ii] = np.matmul(
-                xi_grad.flatten(), np.matmul(M_inv, xi_grad.flatten())
-            )
+            cv_invmass[ii] = np.matmul(xi_grad.flatten(), np.matmul(M_inv, xi_grad.flatten()))
             cv_dot_PES[ii] = np.dot(xi_grad.flatten(), model_grad.flatten())
 
         self.results = {
@@ -1090,14 +1200,18 @@ class eABF(BiasBase):
     Args:
         model: the neural force field model
         cv_def: lsit of Collective Variable (CV) definitions
-            [["cv_type", [atom_indices], np.array([minimum, maximum]), bin_width], [possible second dimension]]
+            [
+             ["cv_type", [atom_indices], np.array([minimum, maximum]), bin_width],
+             [possible second dimension],
+            ]
         equil_temp: float temperature of the simulation (important for extended system dynamics)
         dt: time step of the extended dynamics (has to be equal to that of the real system dyn!)
-        friction_per_ps: friction for the Lagevin dyn of extended system (has to be equal to that of the real system dyn!)
+        friction_per_ps: friction for the Lagevin dyn of extended system (has to be equal to
+            that of the real system dyn!)
         nfull: numer of samples need for full application of bias force
     """
 
-    def __init__(
+    def __init__(  # noqa: D107
         self,
         model_path: str,
         cv_defs: list[dict],
@@ -1129,20 +1243,20 @@ class eABF(BiasBase):
         self.nfull = nfull
 
         for ii, cv in enumerate(self.cv_defs):
-            if "bin_width" in cv.keys():
+            if "bin_width" in cv:
                 self.ext_binwidth[ii] = cv["bin_width"]
-            elif "ext_sigma" in cv.keys():
+            elif "ext_sigma" in cv:
                 self.ext_binwidth[ii] = cv["ext_sigma"]
             else:
                 raise KeyError("bin_width")
 
-            if "ext_pos" in cv.keys():
+            if "ext_pos" in cv:
                 # set initial position
                 self.ext_coords[ii] = cv["ext_pos"]
             else:
                 raise KeyError("ext_pos")
 
-            if "ext_mass" in cv.keys():
+            if "ext_mass" in cv:
                 self.ext_masses[ii] = cv["ext_mass"]
             else:
                 raise KeyError("ext_mass")
@@ -1155,25 +1269,17 @@ class eABF(BiasBase):
 
         self.friction = friction_per_ps * 1.0e-3 / units.fs
         self.rand_push = np.sqrt(
-            self.equil_temp
-            * self.friction
-            * self.ext_dt
-            * units.kB
-            / (2.0e0 * self.ext_masses)
+            self.equil_temp * self.friction * self.ext_dt * units.kB / (2.0e0 * self.ext_masses)
         )
         self.prefac1 = 2.0 / (2.0 + self.friction * self.ext_dt)
-        self.prefac2 = (2.0e0 - self.friction * self.ext_dt) / (
-            2.0e0 + self.friction * self.ext_dt
-        )
+        self.prefac2 = (2.0e0 - self.friction * self.ext_dt) / (2.0e0 + self.friction * self.ext_dt)
 
         # set up all grid accumulators for ABF
         self.nbins_per_dim = np.array([1 for i in range(self.num_cv)])
         self.grid = []
         for i in range(self.num_cv):
             self.nbins_per_dim[i] = int(
-                np.ceil(
-                    np.abs(self.ranges[i, 1] - self.ranges[i, 0]) / self.ext_binwidth[i]
-                )
+                np.ceil(np.abs(self.ranges[i, 1] - self.ranges[i, 0]) / self.ext_binwidth[i])
             )
             self.grid.append(
                 np.arange(
@@ -1195,17 +1301,17 @@ class eABF(BiasBase):
         self.ext_hist = np.zeros_like(self.histogram)
 
     def get_index(self, xi: np.ndarray) -> tuple:
-        """get list of bin indices for current position of CVs or extended variables
+        """Get list of bin indices for current position of CVs or extended variables
+
         Args:
             xi (np.ndarray): Current value of collective variable
+
         Returns:
             bin_x (list):
         """
         bin_x = np.zeros(shape=xi.shape, dtype=np.int64)
         for i in range(self.num_cv):
-            bin_x[i] = int(
-                np.floor(np.abs(xi[i] - self.ranges[i, 0]) / self.ext_binwidth[i])
-            )
+            bin_x[i] = int(np.floor(np.abs(xi[i] - self.ranges[i, 0]) / self.ext_binwidth[i]))
         return tuple(bin_x.reshape(1, -1)[0])
 
     def _update_bias(self, xi: np.ndarray):
@@ -1214,11 +1320,7 @@ class eABF(BiasBase):
             self.ext_hist[bink] += 1
 
             # linear ramp function
-            ramp = (
-                1.0
-                if self.ext_hist[bink] > self.nfull
-                else self.ext_hist[bink] / self.nfull
-            )
+            ramp = 1.0 if self.ext_hist[bink] > self.nfull else self.ext_hist[bink] / self.nfull
 
             for i in range(self.num_cv):
                 # apply bias force on extended system
@@ -1231,9 +1333,7 @@ class eABF(BiasBase):
                     self.bias[i][bink],
                     self.m2_force[i][bink],
                     self.ext_k[i]
-                    * self.diff(
-                        xi[i], self.ext_coords[i], self.cv_defs[i]["type"]
-                    ).item(),
+                    * self.diff(xi[i], self.ext_coords[i], self.cv_defs[i]["type"]).item(),
                 )
                 self.ext_forces[i] -= ramp * self.bias[i][bink]
 
@@ -1280,18 +1380,26 @@ class aMDeABF(eABF):
        Accelerated Molecular Dynamics
 
         see:
-            aMD: Hamelberg et. al., J. Chem. Phys. 120, 11919 (2004); https://doi.org/10.1063/1.1755656
-            GaMD: Miao et. al., J. Chem. Theory Comput. (2015); https://doi.org/10.1021/acs.jctc.5b00436
-            SaMD: Zhao et. al., J. Phys. Chem. Lett. 14, 4, 1103 - 1112 (2023); https://doi.org/10.1021/acs.jpclett.2c03688
+            aMD: Hamelberg et. al., J. Chem. Phys. 120, 11919 (2004);
+                https://doi.org/10.1063/1.1755656
+            GaMD: Miao et. al., J. Chem. Theory Comput. (2015);
+                https://doi.org/10.1021/acs.jctc.5b00436
+            SaMD: Zhao et. al., J. Phys. Chem. Lett. 14, 4, 1103 - 1112 (2023);
+                https://doi.org/10.1021/acs.jpclett.2c03688
 
-        Apply global boost potential to potential energy, that is independent of Collective Variables.
+        Apply global boost potential to potential energy, that is independent of Collective
+            Variables.
 
     Args:
         model: the neural force field model
         cv_def: lsit of Collective Variable (CV) definitions
-            [["cv_type", [atom_indices], np.array([minimum, maximum]), bin_width], [possible second dimension]]
+            [
+             ["cv_type", [atom_indices], np.array([minimum, maximum]), bin_width],
+             [possible second dimension]
+            ]
         amd_parameter: acceleration parameter; SaMD, GaMD == sigma0; aMD == alpha
-        init_step: initial steps where no bias is applied to estimate min, max and var of potential energy
+        init_step: initial steps where no bias is applied to estimate min, max and
+            var of potential energy
         equil_steps: equilibration steps, min, max and var of potential energy is still updated
                           force constant of coupling is calculated from previous steps
         amd_method: "aMD": apply accelerated MD
@@ -1300,11 +1408,12 @@ class aMDeABF(eABF):
                     "SaMD: apply Sigmoid accelerated MD
         equil_temp: float temperature of the simulation (important for extended system dynamics)
         dt: time step of the extended dynamics (has to be equal to that of the real system dyn!)
-        friction_per_ps: friction for the Lagevin dyn of extended system (has to be equal to that of the real system dyn!)
+        friction_per_ps: friction for the Lagevin dyn of extended system (has to be equal to that
+            of the real system dyn!)
         nfull: numer of samples need for full application of bias force
     """
 
-    def __init__(
+    def __init__(  # noqa: D107
         self,
         model_path: str,
         cv_defs: list[dict],
@@ -1380,22 +1489,25 @@ class aMDeABF(eABF):
         xi: np.ndarray,
         grad_xi: np.ndarray,
     ) -> Tuple[np.ndarray, np.ndarray]:
-        """energy and gradient of bias
+        """Energy and gradient of bias
 
         Args:
-            curr_cv: current value of the cv
-            cv_index: for multidimensional FES
+            xi: current value of the cv
+            grad_xi: for multidimensional FES
 
         Returns:
             bias_ener: bias energy
             bias_grad: gradiant of the bias in CV space, needs to be dotted with the cv_gradient
         """
-
         epot = self.results["energy_unbiased"].item()
         self.amd_forces = np.copy(self.results["forces_unbiased"])
 
         self._propagate_ext()
         bias_ener, bias_grad = self._extended_dynamics(xi, grad_xi)
+
+        # Store the harmonic coupling bias for debugging
+        self.harmonic_coupling_energy = bias_ener
+        self.harmonic_coupling_forces = np.copy(bias_grad)
 
         if self.collect_pot_samples is True:
             self._update_pot_distribution(epot)
@@ -1405,10 +1517,16 @@ class aMDeABF(eABF):
 
         self._update_bias(xi)
 
+        # AMD boost contribution
+        self.amd_boost_energy = 0.0
+        self.amd_boost_forces = 0.0 * self.amd_forces
+
         if self.apply_amd is True:
             # apply amd boost potential only if U0 below bound
             if epot < self.E:
                 boost_ener, boost_grad = self._apply_boost(epot)
+                self.amd_boost_energy = boost_ener
+                self.amd_boost_forces = np.copy(boost_grad)
             else:
                 boost_ener, boost_grad = 0.0, 0.0 * self.amd_forces
             bias_ener += boost_ener
@@ -1434,12 +1552,32 @@ class aMDeABF(eABF):
 
     def _apply_boost(self, epot):
         """Apply boost potential to forces"""
+        # Store AMD boost parameters for debugging
+        self.amd_boost_details = {
+            "epot": epot,
+            "method": self.amd_method,
+            "E_threshold": self.E,
+            "pot_min": getattr(self, "pot_min", None),
+            "pot_max": getattr(self, "pot_max", None),
+            "pot_avg": getattr(self, "pot_avg", None),
+            "pot_std": getattr(self, "pot_std", None),
+            "k0": getattr(self, "k0", None),
+            "amd_parameter": getattr(self, "amd_parameter", None),
+        }
+
         if self.amd_method == "amd":
             amd_pot = np.square(self.E - epot) / (self.parameter + (self.E - epot))
             boost_grad = (
                 ((epot - self.E) * (epot - 2.0 * self.parameter - self.E))
                 / np.square(epot - self.parameter - self.E)
             ) * self.amd_forces
+
+            self.amd_boost_details.update(
+                {
+                    "formula": "amd: (E - epot)^2 / (parameter + (E - epot))",
+                    "parameter": self.parameter,
+                }
+            )
 
         elif self.amd_method == "samd":
             amd_pot = self.amd_pot = (
@@ -1454,27 +1592,37 @@ class aMDeABF(eABF):
             )
             boost_grad = (
                 -(
-                    1.0
-                    / (
-                        np.exp(
-                            -self.k * (epot - self.pot_min) + np.log((1 / self.c0) - 1)
-                        )
-                        + 1
-                    )
+                    1.0 / (np.exp(-self.k * (epot - self.pot_min) + np.log((1 / self.c0) - 1)) + 1)
                     - 1
                 )
                 * self.amd_forces
             )
 
-        else:
+            self.amd_boost_details.update(
+                {
+                    "formula": SAMD_FORM,
+                    "k": self.k,
+                    "c": self.c,
+                    "c0": self.c0,
+                }
+            )
+
+        else:  # gamd_lower or gamd_upper
             prefac = self.k0 / (self.pot_max - self.pot_min)
             amd_pot = 0.5 * prefac * np.power(self.E - epot, 2)
             boost_grad = prefac * (self.E - epot) * self.amd_forces
 
+            self.amd_boost_details.update(
+                {
+                    "formula": f"gamd_{self.amd_method.split('_')[-1]}: " + GAMD_FORM_TRIM,
+                    "prefactor": prefac,
+                }
+            )
+
         return amd_pot, boost_grad
 
-    def _update_pot_distribution(self, epot: float):
-        """update min, max, avg, var and std of epot
+    def _update_pot_distribution(self, epot: float) -> None:
+        """Update min, max, avg, var and std of epot
 
         Args:
             epot: potential energy
@@ -1487,12 +1635,8 @@ class aMDeABF(eABF):
         )
         self.pot_std = np.sqrt(self.pot_var)
 
-    def _calc_E_k0(self):
-        """compute force constant for amd boost potential
-
-        Args:
-            epot: potential energy
-        """
+    def _calc_E_k0(self) -> None:
+        """Compute force constant for amd boost potential"""
         if self.amd_method == "gamd_lower":
             self.E = self.pot_max
             ko = (self.amd_parameter / self.pot_std) * (
@@ -1523,10 +1667,7 @@ class aMDeABF(eABF):
                 self.k1 = np.max(
                     [
                         0,
-                        (
-                            np.log(self.c)
-                            + np.log((self.pot_std) / (self.amd_parameter) - 1)
-                        )
+                        (np.log(self.c) + np.log((self.pot_std) / (self.amd_parameter) - 1))
                         / (self.pot_avg - self.pot_min),
                     ]
                 )
@@ -1546,17 +1687,21 @@ class WTMeABF(eABF):
     Args:
         model: the neural force field model
         cv_def: lsit of Collective Variable (CV) definitions
-            [["cv_type", [atom_indices], np.array([minimum, maximum]), bin_width], [possible second dimension]]
+            [
+             ["cv_type", [atom_indices], np.array([minimum, maximum]), bin_width],
+             [possible second dimension],
+            ]
         equil_temp: float temperature of the simulation (important for extended system dynamics)
         dt: time step of the extended dynamics (has to be equal to that of the real system dyn!)
-        friction_per_ps: friction for the Lagevin dyn of extended system (has to be equal to that of the real system dyn!)
+        friction_per_ps: friction for the Lagevin dyn of extended system (has to be equal to that
+            of the real system dyn!)
         nfull: numer of samples need for full application of bias force
         hill_height: unscaled height of the MetaD Gaussian hills in eV
         hill_drop_freq: #steps between depositing Gaussians
         well_tempered_temp: ficticious temperature for the well-tempered scaling
     """
 
-    def __init__(
+    def __init__(  # noqa: D107
         self,
         model_path: str,
         cv_defs: list[dict],
@@ -1599,7 +1744,7 @@ class WTMeABF(eABF):
         self.center = []
 
         for ii, cv in enumerate(self.cv_defs):
-            if "hill_std" in cv.keys():
+            if "hill_std" in cv:
                 self.hill_std[ii] = cv["hill_std"]
                 self.hill_var[ii] = cv["hill_std"] * cv["hill_std"]
             else:
@@ -1618,11 +1763,7 @@ class WTMeABF(eABF):
             self.ext_hist[bink] += 1
 
             # linear ramp function
-            ramp = (
-                1.0
-                if self.ext_hist[bink] > self.nfull
-                else self.ext_hist[bink] / self.nfull
-            )
+            ramp = 1.0 if self.ext_hist[bink] > self.nfull else self.ext_hist[bink] / self.nfull
 
             for i in range(self.num_cv):
                 # apply bias force on extended system
@@ -1634,19 +1775,19 @@ class WTMeABF(eABF):
                     self.ext_hist[bink],
                     self.bias[i][bink],
                     self.m2_force[i][bink],
-                    self.ext_k[i]
-                    * self.diff(xi[i], self.ext_coords[i], self.cv_defs[i]["type"]),
+                    self.ext_k[i] * self.diff(xi[i], self.ext_coords[i], self.cv_defs[i]["type"]),
                 )
                 self.ext_forces[i] -= ramp * self.bias[i][bink] + mtd_forces[i]
 
     def get_wtm_force(self, xi: np.ndarray) -> np.ndarray:
-        """compute well-tempered metadynamics bias force from superposition of gaussian hills
+        """Compute well-tempered metadynamics bias force from superposition of gaussian hills
+
         Args:
             xi: state of collective variable
+
         Returns:
             bias_force: bias force from metadynamics
         """
-
         is_in_bounds = self._check_boundaries(xi)
 
         if (self.call_count % self.hill_drop_freq == 0) and is_in_bounds:
@@ -1660,14 +1801,15 @@ class WTMeABF(eABF):
         return bias_force
 
     def _accumulate_wtm_force(self, xi: np.ndarray) -> Tuple[list, float]:
-        """compute numerical WTM bias force from a grid
+        """Compute numerical WTM bias force from a grid
         Right now this works only for 1D CVs
+
         Args:
             xi: state of collective variable
+
         Returns:
             bias_force: bias force from metadynamics
         """
-
         bink = self.get_index(xi)
         if self.call_count % self.hill_drop_freq == 0:
             w = self.hill_height * np.exp(
@@ -1684,13 +1826,14 @@ class WTMeABF(eABF):
         return self.metaforce[:, bink], self.metapot[bink]
 
     def _analytic_wtm_force(self, xi: np.ndarray) -> Tuple[list, float]:
-        """compute analytic WTM bias force from sum of gaussians hills
+        """Compute analytic WTM bias force from sum of gaussians hills
+
         Args:
             xi: state of collective variable
+
         Returns:
             bias_force: bias force from metadynamics
         """
-
         local_pot = 0.0
         bias_force = np.zeros(shape=(self.num_cv))
 
@@ -1704,32 +1847,26 @@ class WTMeABF(eABF):
 
         dist_to_centers = []
         for ii in range(self.num_cv):
-            dist_to_centers.append(
-                self.diff(
-                    xi[ii], np.asarray(self.center)[:, ii], self.cv_defs[ii]["type"]
-                )
+            dist_to_centers.append(  # noqa: PERF401
+                self.diff(xi[ii], np.asarray(self.center)[:, ii], self.cv_defs[ii]["type"])
             )
 
         dist_to_centers = np.asarray(dist_to_centers)
 
         if self.num_cv > 1:
-            ind[
-                (abs(dist_to_centers) > 3 * self.hill_std.reshape(-1, 1)).all(axis=0)
-            ] = np.ma.masked
+            ind[(abs(dist_to_centers) > 3 * self.hill_std.reshape(-1, 1)).all(axis=0)] = (
+                np.ma.masked
+            )
         else:
-            ind[
-                (abs(dist_to_centers) > 3 * self.hill_std.reshape(-1, 1)).all(axis=0)
-            ] = np.ma.masked
+            ind[(abs(dist_to_centers) > 3 * self.hill_std.reshape(-1, 1)).all(axis=0)] = (
+                np.ma.masked
+            )
 
         # can get slow in long run, so only iterate over significant elements
         for i in np.nditer(ind.compressed(), flags=["zerosize_ok"]):
-            w = self.hill_height * np.exp(
-                -local_pot / (units.kB * self.well_tempered_temp)
-            )
+            w = self.hill_height * np.exp(-local_pot / (units.kB * self.well_tempered_temp))
 
-            epot = w * np.exp(
-                -np.power(dist_to_centers[:, i] / self.hill_std, 2).sum() / 2.0
-            )
+            epot = w * np.exp(-np.power(dist_to_centers[:, i] / self.hill_std, 2).sum() / 2.0)
             local_pot += epot
             bias_force -= epot * dist_to_centers[:, i] / self.hill_var
 
@@ -1743,7 +1880,10 @@ class AttractiveBias(MACEBiasedCalculator):
     Args:
         model: the deural force field model
         cv_def: list of Collective Variable (CV) definitions
-            [["cv_type", [atom_indices], np.array([minimum, maximum]), bin_width], [possible second dimension]]
+            [
+             ["cv_type", [atom_indices], np.array([minimum, maximum]), bin_width],
+             [possible second dimension],
+            ]
         gamma: coupling strength, regulates strength of attraction
     """
 
@@ -1762,7 +1902,7 @@ class AttractiveBias(MACEBiasedCalculator):
         "const_vals",
     ]
 
-    def __init__(
+    def __init__(  # noqa: D107
         self,
         model_path: str,
         cv_defs: list[dict],
@@ -1810,22 +1950,19 @@ class AttractiveBias(MACEBiasedCalculator):
         self.conf_k = np.zeros(shape=(self.num_cv, 1))
 
         for ii, cv in enumerate(self.cv_defs):
-            if "range" in cv.keys():
+            if "range" in cv:
                 self.ext_coords[ii] = cv["range"][0]
                 self.ranges[ii] = cv["range"]
             else:
                 raise KeyError("range")
 
-            if "margin" in cv.keys():
+            if "margin" in cv:
                 self.margins[ii] = cv["margin"]
 
-            if "conf_k" in cv.keys():
+            if "conf_k" in cv:
                 self.conf_k[ii] = cv["conf_k"]
 
-            if "type" not in cv.keys():
-                self.cv_defs[ii]["type"] = "not_angle"
-            else:
-                self.cv_defs[ii]["type"] = cv["type"]
+            self.cv_defs[ii]["type"] = cv.get("type", "not_angle")
 
         self.constraints = None
         self.num_const = 0
@@ -1837,30 +1974,30 @@ class AttractiveBias(MACEBiasedCalculator):
                 self.constraints[-1]["func"] = CV(cv["definition"])
 
                 self.constraints[-1]["pos"] = cv["pos"]
-                if "k" in cv.keys():
+                if "k" in cv:
                     self.constraints[-1]["k"] = cv["k"]
-                elif "sigma" in cv.keys():
+                elif "sigma" in cv:
                     self.constraints[-1]["k"] = (units.kB * self.equil_temp) / (
                         cv["sigma"] * cv["sigma"]
                     )
                 else:
                     raise KeyError("k/sigma")
 
-                if "type" not in cv.keys():
-                    self.constraints[-1]["type"] = "not_angle"
-                else:
-                    self.constraints[-1]["type"] = cv["type"]
+                self.constraints[-1]["type"] = cv.get("type", "not_angle")
 
             self.num_const = len(self.constraints)
 
     def diff(
         self, a: Union[np.ndarray, float], b: Union[np.ndarray, float], cv_type: str
     ) -> Union[np.ndarray, float]:
-        """get difference of elements of numbers or arrays
+        """Get difference of elements of numbers or arrays
         in range(-inf, inf) if is_angle is False or in range(-pi, pi) if is_angle is True
+
         Args:
             a: number or array
             b: number or array
+            cv_type: type of CV, used to determine if angle or not
+
         Returns:
             diff: element-wise difference (a-b)
         """
@@ -1887,17 +2024,16 @@ class AttractiveBias(MACEBiasedCalculator):
         xi: np.ndarray,
         grad_xi: np.ndarray,
     ) -> Tuple[np.ndarray, np.ndarray]:
-        """energy and gradient of bias
+        """Energy and gradient of bias
 
         Args:
-            curr_cv: current value of the cv
-            cv_index: for multidimensional FES
+            xi: current value of the cv
+            grad_xi: for multidimensional FES
 
         Returns:
             bias_ener: bias energy
             bias_grad: gradiant of the bias in CV space, needs to be dotted with the cv_gradient
         """
-
         bias_grad = -(self.gamma * grad_xi).sum(axis=0)
         bias_ener = -(self.gamma * xi).sum()
 
@@ -1928,7 +2064,7 @@ class AttractiveBias(MACEBiasedCalculator):
         xi: np.ndarray,
         grad_xi: np.ndarray,
     ) -> Tuple[np.ndarray, np.ndarray]:
-        """energy and gradient of additional harmonic constraint
+        """Energy and gradient of additional harmonic constraint
 
         Args:
             xi: current value of constraint "CV"
@@ -1937,16 +2073,12 @@ class AttractiveBias(MACEBiasedCalculator):
         Returns:
             constr_ener: constraint energy
             constr_grad: gradient of the constraint energy
-
         """
-
         constr_grad = np.zeros_like(grad_xi[0])
         constr_ener = 0.0
 
         for i in range(self.num_const):
-            dxi = self.diff(
-                xi[i], self.constraints[i]["pos"], self.constraints[i]["type"]
-            )
+            dxi = self.diff(xi[i], self.constraints[i]["pos"], self.constraints[i]["type"])
             constr_grad += self.constraints[i]["k"] * dxi * grad_xi[i]
             constr_ener += 0.5 * self.constraints[i]["k"] * dxi**2
 
@@ -1954,20 +2086,19 @@ class AttractiveBias(MACEBiasedCalculator):
 
     def calculate(
         self,
-        atoms=None,
-        properties=None,
-        system_changes=all_changes,
-    ):
+        atoms: Optional[Atoms] = None,
+        properties: Optional[list] = None,
+        system_changes: Union[List, str] = all_changes,
+    ) -> None:
         """Calculates the desired properties for the given Atoms.
 
         Args:
-        atoms (Atoms): custom Atoms subclass that contains implementation
-            of neighbor lists, batching and so on. Avoids the use of the List[Atoms]
-            to calculate using the models created.
-        properties: list of keywords that can be present in self.results
-        system_changes (default from ase)
+            atoms (Atoms): custom Atoms subclass that contains implementation
+                of neighbor lists, batching and so on. Avoids the use of the List[Atoms]
+                to calculate using the models created.
+            properties: list of keywords that can be present in self.results
+            system_changes: default from ase
         """
-
         if properties is None:
             properties = DEFAULT_PROPERTIES
 
@@ -2008,9 +2139,7 @@ class AttractiveBias(MACEBiasedCalculator):
             cvs[ii] = xi
             cv_grads[ii] = xi_grad
             cv_grad_lens[ii] = np.linalg.norm(xi_grad)
-            cv_invmass[ii] = np.einsum(
-                "i,ii,i", xi_grad.flatten(), M_inv, xi_grad.flatten()
-            )
+            cv_invmass[ii] = np.einsum("i,ii,i", xi_grad.flatten(), M_inv, xi_grad.flatten())
             cv_dot_PES[ii] = np.dot(xi_grad.flatten(), model_grad.flatten())
 
         self.results = {
@@ -2059,11 +2188,13 @@ def welford_var(
     count: float, mean: float, M2: float, newValue: float
 ) -> Tuple[float, float, float]:
     """On-the-fly estimate of sample variance by Welford's online algorithm
+
     Args:
         count: current number of samples (with new one)
         mean: current mean
         M2: helper to get variance
         newValue: new sample
+
     Returns:
         mean: sample mean,
         M2: sum of powers of differences from the mean
